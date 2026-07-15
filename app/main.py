@@ -1,19 +1,25 @@
 import asyncio
+import base64
+import secrets
+import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db, worker
 from .config import (
     ANTHROPIC_API_KEY,
+    APP_PASSWORD,
+    APP_USER,
     DEFAULT_CALLBACK_URL,
     ENABLE_FRAMES,
     GROQ_API_KEY,
+    IN_DOCKER,
     LLM_PROVIDER,
     OUT_DIR,
     OUTPUT_LANGUAGE,
@@ -24,6 +30,20 @@ from .config import (
 from .pipeline import frames
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _auth_ok(header: str | None) -> bool:
+    if not header or not header.startswith("Basic "):
+        return False
+    try:
+        raw = base64.b64decode(header[6:]).decode("utf-8")
+        user, _, password = raw.partition(":")
+    except Exception:
+        return False
+    # compare_digest: şifre karşılaştırmasını zamanlama saldırısına kapatır.
+    return secrets.compare_digest(user, APP_USER) and secrets.compare_digest(
+        password, APP_PASSWORD
+    )
 
 
 class JobRequest(BaseModel):
@@ -45,6 +65,16 @@ def _providers() -> list[dict]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Konteynerde çalışıyorsa dışarı açık kabul edilir: şifresiz açılmasına izin
+    # vermiyoruz. Aksi halde linki bulan herkes iş atıp API kotasını yakabilir
+    # ve anahtarlar sunucuda duruyor. Yerelde (127.0.0.1) şifre opsiyonel.
+    if IN_DOCKER and not APP_PASSWORD:
+        raise RuntimeError(
+            "APP_PASSWORD tanımlı değil. Konteynerde şifresiz çalıştırmak, servisi "
+            "internete açıkken korumasız bırakır (API kotanız yakılabilir). "
+            "Coolify'da APP_PASSWORD ortam değişkenini ayarlayın."
+        )
+
     ensure_dirs()
     db.init()
 
@@ -63,6 +93,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="video-digest", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def koruma(request: Request, call_next):
+    """APP_PASSWORD doluysa her şeyi HTTP Basic ile korur.
+
+    Middleware olarak yazıldı çünkü /out altındaki slayt görselleri StaticFiles
+    ile servis ediliyor ve bir dependency onları kapsamazdı — özet içeriği
+    resimlerin içinde de var.
+    """
+    # /health muaf: konteyner healthcheck'i kimlik bilgisi taşıyamaz. Kimliksiz
+    # çağrıda yalnızca {"ok": true} döner, ayrıntı sızmaz (bkz. health()).
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    if APP_PASSWORD and not _auth_ok(request.headers.get("authorization")):
+        return Response(
+            status_code=401,
+            content="Yetkisiz",
+            headers={"WWW-Authenticate": 'Basic realm="video-digest"'},
+        )
+    return await call_next(request)
+
+
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -78,8 +130,80 @@ async def providers() -> list[dict]:
     return _providers()
 
 
+def _job_id_of(name: str) -> str:
+    """data/out içindeki bir girdinin hangi işe ait olduğunu çıkarır.
+    Biçimler: <id>.md | <id>.transcript.txt | <id>.transcript.raw.txt | <id>_frames
+    """
+    if name.endswith("_frames"):
+        return name[: -len("_frames")]
+    return name.split(".")[0]
+
+
+def _entries_of(job_id: str) -> list[Path]:
+    return [p for p in OUT_DIR.iterdir() if _job_id_of(p.name) == job_id]
+
+
+def _size_of(path: Path) -> int:
+    if path.is_dir():
+        return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+    return path.stat().st_size
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
+
+@app.delete("/jobs/{job_id}")
+async def delete_job(job_id: str) -> dict:
+    job = db.get(job_id)
+    if job is None:
+        raise HTTPException(404, "iş bulunamadı")
+    # Koşan işin dosyalarını silmek worker'ı ortasında yakalar.
+    if job["status"] == "running":
+        raise HTTPException(409, "iş çalışıyor — bitmesini bekleyin")
+
+    silinen, bayt = [], 0
+    for p in _entries_of(job_id):
+        bayt += _size_of(p)
+        silinen.append(p.name)
+        _remove(p)
+    db.delete_job(job_id)
+    return {"silinen": silinen, "bayt": bayt}
+
+
+@app.post("/api/cleanup")
+async def cleanup(uygula: bool = False) -> dict:
+    """Veritabanında karşılığı olmayan çıktıları bulur.
+
+    uygula=false (varsayılan) yalnızca listeler — ne silineceğini görmeden
+    silmek istemiyoruz.
+    """
+    bilinen = db.all_ids()
+    oksuz = [p for p in OUT_DIR.iterdir() if _job_id_of(p.name) not in bilinen]
+    bayt = sum(_size_of(p) for p in oksuz)
+
+    if uygula:
+        for p in oksuz:
+            _remove(p)
+
+    return {
+        "uygulandi": uygula,
+        "adet": len(oksuz),
+        "bayt": bayt,
+        "dosyalar": sorted(p.name for p in oksuz),
+    }
+
+
 @app.get("/health")
-async def health() -> dict:
+async def health(request: Request) -> dict:
+    # Bu uç korumadan muaf (healthcheck için). Kimliksiz çağrıya yapılandırma
+    # ayrıntısı vermiyoruz — hangi anahtarların tanımlı olduğu dahil.
+    if APP_PASSWORD and not _auth_ok(request.headers.get("authorization")):
+        return {"ok": True}
+
     ocr_ok, ocr_message = frames.check_ocr_langs() if ENABLE_FRAMES else (True, "kapalı")
     return {
         "ok": True,

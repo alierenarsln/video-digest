@@ -122,6 +122,15 @@ PROVIDER_INFO = {
 # resolve(): result_path API'de ve n8n callback'inde dışarı veriliyor. Göreli
 # bırakılırsa yalnızca sunucunun çalışma dizininden anlamlı olur ve başka bir
 # dizinden okuyan istemci "dosya yok" alır.
+# --- Erişim koruması ---
+# BOŞ = koruma yok. Yalnızca 127.0.0.1'e bağlıyken güvenli; internete açık bir
+# sunucuda (Coolify/VPS) boş bırakmak, linki bulan herkesin iş atıp API
+# kotanızı yakabilmesi demek. Docker'da zorunlu tutuluyor (bkz. main.py).
+APP_USER = os.environ.get("APP_USER", "admin").strip()
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
+# Konteynerde çalışıyorsak dışarı açık sayılır → şifresiz açılışa izin verme.
+IN_DOCKER = _bool("IN_DOCKER", False)
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 WORK_DIR = DATA_DIR / "work"
 OUT_DIR = DATA_DIR / "out"

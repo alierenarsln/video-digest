@@ -103,8 +103,20 @@
   .rozetler { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 22px; }
   .rozet {
     font-size: 11px; color: var(--muted); border: 1px solid var(--line);
-    padding: 3px 9px; border-radius: 99px;
+    padding: 3px 9px; border-radius: 99px; background: none; text-decoration: none;
   }
+  button.rozet { cursor: pointer; font-family: inherit; }
+  button.sil:hover { border-color: var(--err); color: var(--err); }
+  #bakim {
+    padding: 10px 16px; border-top: 1px solid var(--line);
+    font-size: 11px; color: var(--muted);
+  }
+  #bakim button {
+    background: none; border: 1px solid var(--line); color: var(--muted);
+    border-radius: 6px; padding: 4px 9px; font-size: 11px; cursor: pointer;
+    font-family: inherit;
+  }
+  #bakim button:hover { border-color: var(--accent); color: var(--accent); }
 
   /* özet gövdesi */
   #ozet h1 { font-size: 24px; margin: 0 0 6px; }
@@ -142,6 +154,10 @@
       <div class="ipucu" id="ipucu"></div>
     </div>
     <div id="liste"></div>
+    <div id="bakim">
+      <button id="temizlik">Öksüz dosyaları temizle</button>
+      <span id="bakimSonuc"></span>
+    </div>
   </section>
 
   <section id="sag">
@@ -322,10 +338,43 @@ async function ciz() {
 
   $("#durum").innerHTML = `<div class="rozetler">` +
     rozetler.map((r) => `<span class="rozet">${esc(r)}</span>`).join("") +
-    `<a class="rozet" href="/jobs/${j.id}/markdown" target="_blank">markdown</a></div>`;
+    `<a class="rozet" href="/jobs/${j.id}/markdown" target="_blank">markdown</a>` +
+    `<button class="rozet sil" data-id="${j.id}">sil</button></div>`;
+  const sil = $("#durum .sil");
+  if (sil) sil.onclick = () => silJob(j.id, j.title || j.id);
   $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
   return true;
 }
+
+const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+
+async function silJob(id, ad) {
+  if (!confirm(`"${ad}" silinsin mi?\n\nÖzet, transkript ve slayt görselleri kalıcı olarak silinir.`)) return;
+  const r = await fetch(`/jobs/${id}`, { method: "DELETE" });
+  if (!r.ok) { alert("Silinemedi: " + ((await r.json()).detail || r.statusText)); return; }
+  const d = await r.json();
+  secili = null;
+  clearInterval(zamanlayici);
+  $("#icerik").style.display = "none";
+  $("#bos").style.display = "block";
+  sonListe = null;
+  listele();
+  $("#bakimSonuc").textContent = ` ${d.silinen.length} dosya silindi (${mb(d.bayt)})`;
+}
+
+$("#temizlik").onclick = async () => {
+  // Önce KURU çalıştır (uygula=false): ne silineceğini görmeden silmiyoruz.
+  const on = await (await fetch("/api/cleanup", { method: "POST" })).json();
+  if (!on.adet) { $("#bakimSonuc").textContent = " Öksüz dosya yok."; return; }
+  if (!confirm(
+    `${on.adet} öksüz dosya/klasör bulundu (${mb(on.bayt)}).\n\n` +
+    `Bunların veritabanında kaydı yok (silinmiş işlerden kalma).\n\n` +
+    on.dosyalar.slice(0, 12).join("\n") + (on.adet > 12 ? "\n…" : "") +
+    `\n\nKalıcı olarak silinsin mi?`
+  )) return;
+  const d = await (await fetch("/api/cleanup?uygula=true", { method: "POST" })).json();
+  $("#bakimSonuc").textContent = ` ${d.adet} öğe silindi (${mb(d.bayt)})`;
+};
 
 $("#btn").onclick = async () => {
   const kaynak = $("#kaynak").value.trim();

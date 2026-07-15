@@ -80,6 +80,16 @@ def list_jobs(limit: int = 50) -> list[dict]:
     return out
 
 
+def delete_job(job_id: str) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
+
+def all_ids() -> set[str]:
+    with _conn() as conn:
+        return {r["id"] for r in conn.execute("SELECT id FROM jobs")}
+
+
 def pending_ids() -> list[str]:
     """Yeniden başlatmadan sağ çıkan işler — kuyruğa geri konur."""
     with _conn() as conn:
