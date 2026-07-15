@@ -164,6 +164,7 @@ async def attach_file(
     job_id: str,
     file: UploadFile = File(...),
     subtitles: UploadFile | None = File(None),
+    title: str | None = Form(None),
 ) -> dict:
     """Agent'ın evde indirdiği dosyayı bekleyen işe bağlar ve kuyruğa alır.
 
@@ -183,8 +184,17 @@ async def attach_file(
         # fetch.from_file bu dosyayı videonun yanında arıyor.
         sub_path = UPLOAD_DIR / f"{dest.stem}.subs.json3"
         sub_path.write_bytes(await subtitles.read())
-    # Kaynağı indirilen dosyayla değiştir; link artık gerekmiyor.
-    db.update(job_id, source=str(dest), status="queued", stage="queued")
+    # Kaynağı indirilen dosyayla değiştiriyoruz ama ORİJİNAL LİNKİ saklıyoruz:
+    # onsuz başlık dosya adı (iş numarası) oluyor ve özetteki zaman damgaları
+    # videoya tıklanamıyor — ürünün en değerli özelliği sessizce ölüyor.
+    db.update(
+        job_id,
+        source=str(dest),
+        origin_url=job["source"],
+        title=(title or "").strip() or None,
+        status="queued",
+        stage="queued",
+    )
     await worker.enqueue(job_id)
     return {"job_id": job_id, "bayt": boyut}
 

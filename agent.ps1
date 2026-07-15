@@ -89,10 +89,16 @@ while ($true) {
             }
 
             # curl.exe: PS 5.1 multipart'ta buyuk dosyayi bellege aliyor ve cokuyor.
+            # Basligi da gonder: sunucu yalnizca dosyayi goruyor, dosya adi da
+            # is numarasi -> baslik "c23e86cac7c3" gibi anlamsiz cikiyordu.
+            $baslik = (& $ytdlp --no-playlist --no-warnings --skip-download `
+                           --print "%(title)s" $is.source 2>$null | Select-Object -First 1)
+
             $curlArgs = @("-s", "-X", "POST", "$Sunucu/jobs/$($is.id)/attach",
                           "-H", "Authorization: Basic $b64",
                           "-F", "file=@$($dosya.FullName)")
             if ($altyazi) { $curlArgs += @("-F", "subtitles=@$($altyazi.FullName)") }
+            if ($baslik)  { $curlArgs += @("-F", "title=$baslik") }
             $yanit = curl.exe @curlArgs
 
             if ($LASTEXITCODE -eq 0 -and $yanit -match '"job_id"') {

@@ -59,6 +59,15 @@ async def _process(job_id: str) -> None:
 
     db.update(job_id, status="running", stage="fetch")
     source = await fetch.fetch(job["source"], work)
+
+    # Agent bir linki indirip yüklediyse dosya adı iş numarasıdır ve link
+    # kaybolmuştur. Orijinali geri koyuyoruz: başlık anlamlı olsun ve özetteki
+    # zaman damgaları videoya tıklanabilsin.
+    if job.get("origin_url"):
+        source.meta["url"] = job["origin_url"]
+        if job.get("title"):
+            source.title = job["title"]
+
     db.update(job_id, title=source.title)
 
     if source.subtitles is not None:

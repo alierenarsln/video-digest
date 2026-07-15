@@ -11,6 +11,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     status       TEXT NOT NULL,
     stage        TEXT,
     source       TEXT NOT NULL,
+    -- Agent bir linki indirip yükleyince source dosya yolu olur ve link kaybolur.
+    -- Orijinali burada saklıyoruz: başlık ve TIKLANABİLİR ZAMAN DAMGALARI için
+    -- gerekli — onsuz özetin en değerli özelliği sessizce ölüyor.
+    origin_url   TEXT,
     title        TEXT,
     provider     TEXT,
     callback_url TEXT,
@@ -32,6 +36,14 @@ def _conn() -> sqlite3.Connection:
 def init() -> None:
     with _conn() as conn:
         conn.executescript(SCHEMA)
+
+        # CREATE TABLE IF NOT EXISTS mevcut tabloya yeni sütun EKLEMEZ; şema
+        # büyüdükçe eski kurulumlar sessizce kırılır (SELECT/UPDATE hata verir).
+        var = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+        for ad, tanim in (("origin_url", "TEXT"), ("provider", "TEXT")):
+            if ad not in var:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")
+                print(f"[db] goc: jobs.{ad} sutunu eklendi", flush=True)
 
 
 def create_job(
@@ -68,8 +80,8 @@ def get(job_id: str) -> Optional[dict]:
 def list_jobs(limit: int = 50) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT id, status, stage, source, title, provider, error, created_at,"
-            " updated_at, meta FROM jobs ORDER BY created_at DESC LIMIT ?",
+            "SELECT id, status, stage, source, origin_url, title, provider, error,"
+            " created_at, updated_at, meta FROM jobs ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     out = []
