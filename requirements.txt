@@ -1,0 +1,18 @@
+# Taban sürümler (sabit pin değil) — aynı dosya hem Docker'daki Python 3.11'de
+# hem yerel Python 3.14'te kurulabilsin diye. Sabit pinlerde 3.14 için hazır
+# tekerlek bulunamıyor ve pip kaynaktan derlemeye kalkıyor.
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+httpx>=0.28
+anthropic>=0.116
+yt-dlp>=2025.6.9
+python-dotenv>=1.0.1
+
+# Görsel katman (Faz 2).
+# scenedetect + opencv KASITLI OLARAK YOK: sahne dedektörleri slayt destelerinde
+# ölçüldü ve sıfır kesme buldu (bkz. frames.py). Kare örnekleme ffmpeg ile, slayt
+# ayrımı phash ile yapılıyor — hem daha doğru hem iki ağır bağımlılık eksik.
+Pillow>=11.0
+ImageHash>=4.3.1
+pytesseract>=0.3.13

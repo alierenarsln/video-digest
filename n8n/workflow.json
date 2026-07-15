@@ -1,0 +1,153 @@
+{
+  "name": "video-digest",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "digest",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-submit",
+      "name": "Link geldi",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-320, 0],
+      "webhookId": "digest-submit"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://worker:8080/jobs",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: $json.body.source, callback_url: 'http://n8n:5678/webhook/digest-done' }) }}",
+        "options": {}
+      },
+      "id": "create-job",
+      "name": "İş oluştur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, job_id: $json.job_id }) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Kuyruğa alındı",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [120, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "digest-done",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-done",
+      "name": "İş bitti",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-320, 220],
+      "webhookId": "digest-done"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "id": "is-done",
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "done",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Başarılı mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-100, 220]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "title",
+              "name": "title",
+              "value": "={{ $json.body.title }}",
+              "type": "string"
+            },
+            {
+              "id": "markdown",
+              "name": "markdown",
+              "value": "={{ $json.body.markdown }}",
+              "type": "string"
+            },
+            {
+              "id": "tldr",
+              "name": "tldr",
+              "value": "={{ $json.body.markdown.split('## Detaylı Özet')[0] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "shape-output",
+      "name": "Çıktıyı hazırla",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [140, 140],
+      "notes": "Buradan sonrasını kendinize göre bağlayın: WhatsApp / mail / Obsidian dosyası. tldr alanı kısa bildirim için, markdown tam metin için."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error",
+              "name": "error",
+              "value": "={{ $json.body.error }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "shape-error",
+      "name": "Hatayı bildir",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [140, 320]
+    }
+  ],
+  "connections": {
+    "Link geldi": {
+      "main": [[{ "node": "İş oluştur", "type": "main", "index": 0 }]]
+    },
+    "İş oluştur": {
+      "main": [[{ "node": "Kuyruğa alındı", "type": "main", "index": 0 }]]
+    },
+    "İş bitti": {
+      "main": [[{ "node": "Başarılı mı?", "type": "main", "index": 0 }]]
+    },
+    "Başarılı mı?": {
+      "main": [
+        [{ "node": "Çıktıyı hazırla", "type": "main", "index": 0 }],
+        [{ "node": "Hatayı bildir", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

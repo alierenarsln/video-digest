@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>video-digest</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a22; --line: #262c38;
+    --fg: #e6e9ef; --muted: #8b94a7; --accent: #4a9eff; --ok: #3fb950;
+    --warn: #d29922; --err: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --panel: #fff; --line: #e2e5ea;
+      --fg: #1a1d23; --muted: #626b7d; --accent: #0969da; --ok: #1a7f37;
+      --warn: #9a6700; --err: #cf222e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    position: sticky; top: 0; background: var(--bg); z-index: 5;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px; }
+  #saglik { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+
+  main { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 53px); }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } #liste { max-height: 260px; } }
+
+  #sol { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  #gonder { padding: 16px; border-bottom: 1px solid var(--line); }
+  input[type=text] {
+    width: 100%; padding: 10px 12px; border-radius: 8px; font-size: 14px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #gonder button {
+    margin-top: 10px; width: 100%; padding: 10px; border: 0; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  #gonder button:disabled { opacity: .5; cursor: default; }
+  .ipucu { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  #liste { overflow-y: auto; flex: 1; }
+  /* Gerçek <button>: klavyeyle gezilebilsin ve ekran okuyucu tıklanabilir görsün. */
+  .is {
+    display: block; width: 100%; text-align: left; font: inherit; color: inherit;
+    background: none; border: 0; border-bottom: 1px solid var(--line);
+    padding: 12px 16px; cursor: pointer;
+  }
+  .is:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .is:hover { background: var(--panel); }
+  .is.secili { background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); }
+  .is .baslik {
+    font-size: 13px; font-weight: 600; margin-bottom: 3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .is .alt { font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+
+  #sag { padding: 28px 34px; overflow-y: auto; max-width: 900px; }
+  #bos { color: var(--muted); text-align: center; margin-top: 90px; font-size: 14px; }
+
+  .asamalar { display: flex; flex-direction: column; gap: 9px; margin-top: 22px; }
+  .asama { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+  .asama.aktif { color: var(--fg); font-weight: 600; }
+  .asama.bitti { color: var(--ok); }
+  .spin {
+    width: 12px; height: 12px; border: 2px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%; animation: d 0.7s linear infinite;
+  }
+  @keyframes d { to { transform: rotate(360deg); } }
+
+  .hata {
+    background: color-mix(in srgb, var(--err) 12%, transparent);
+    border: 1px solid var(--err); border-radius: 8px; padding: 14px;
+    white-space: pre-wrap; font-size: 13px; font-family: ui-monospace, monospace;
+  }
+  .rozetler { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 22px; }
+  .rozet {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+    padding: 3px 9px; border-radius: 99px;
+  }
+
+  /* özet gövdesi */
+  #ozet h1 { font-size: 24px; margin: 0 0 6px; }
+  #ozet h2 { font-size: 16px; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  #ozet h3 { font-size: 15px; margin: 26px 0 8px; }
+  #ozet ul { padding-left: 20px; }
+  #ozet li { margin: 5px 0; }
+  #ozet a { color: var(--accent); text-decoration: none; }
+  #ozet a:hover { text-decoration: underline; }
+  #ozet code {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 1px 5px; font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  #ozet img {
+    max-width: 100%; border: 1px solid var(--line); border-radius: 8px; margin: 10px 0 4px;
+  }
+  #ozet sub { color: var(--muted); font-size: 11px; }
+  #ozet hr { border: 0; border-top: 1px solid var(--line); margin: 30px 0 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>video-digest</h1>
+  <span id="saglik"></span>
+</header>
+
+<main>
+  <section id="sol">
+    <div id="gonder">
+      <input id="kaynak" type="text" placeholder="YouTube linki veya dosya yolu" autocomplete="off">
+      <button id="btn">Özetle</button>
+      <div class="ipucu">1 saatlik video ~10-15 dk. Sekmeyi kapatabilirsiniz, iş sunucuda devam eder.</div>
+    </div>
+    <div id="liste"></div>
+  </section>
+
+  <section id="sag">
+    <div id="bos">Bir link yapıştırın, özet burada görünecek.</div>
+    <div id="icerik" style="display:none">
+      <div id="durum"></div>
+      <div id="ozet"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// subtitles ve transcribe birbirini DIŞLAYAN yollar (altyazı bulunursa Whisper hiç
+// koşmaz). İkisini ayrı satır göstermek "✓ Altyazı kullanılıyor" gibi yanlış bir
+// onay üretiyordu; tek adımda birleştirildi. repair de atlanabilir — bu yüzden
+// tamamlanmış adımlar sırayla değil, yalnızca AKTİF olan vurgulanarak gösteriliyor.
+const ASAMALAR = [
+  ["fetch",                     "Video indiriliyor"],
+  ["subtitles|transcribe",      "Transkript hazırlanıyor"],
+  ["frames",                    "Slaytlar okunuyor (OCR)"],
+  ["repair",                    "Transkript onarılıyor"],
+  ["segment",                   "Konulara bölünüyor"],
+  ["summarize",                 "Özetleniyor + eleştirmen"],
+  ["render",                    "Markdown yazılıyor"],
+];
+const asamaAdi = (stage) => {
+  const bulunan = ASAMALAR.find(([k]) => k.split("|").includes(stage));
+  return bulunan ? bulunan[1] : stage;
+};
+
+let secili = null, zamanlayici = null, sonListe = null;
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Markdown'ı biz ürettiğimiz için biçimi tam biliniyor; harici kütüphane yerine
+// yalnızca kullandığımız işaretlemeyi çeviren küçük bir çizici.
+function md(src, jobId) {
+  const satirIci = (t) =>
+    esc(t)
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, s) => `<img alt="${a}" src="${duzelt(s, jobId)}">`)
+      .replace(/\[`([^`]+)`\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener"><code>$1</code></a>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/&lt;sub&gt;/g, "<sub>").replace(/&lt;\/sub&gt;/g, "</sub>");
+
+  const out = [];
+  let liste = false;
+  const kapat = () => { if (liste) { out.push("</ul>"); liste = false; } };
+
+  for (const ham of src.split("\n")) {
+    const s = ham.trim();
+    if (!s) { kapat(); continue; }
+    if (s === "---") { kapat(); out.push("<hr>"); continue; }
+    let m;
+    if ((m = s.match(/^(#{1,3})\s+(.*)$/))) {
+      kapat();
+      out.push(`<h${m[1].length}>${satirIci(m[2])}</h${m[1].length}>`);
+    } else if ((m = s.match(/^-\s+(.*)$/))) {
+      if (!liste) { out.push("<ul>"); liste = true; }
+      out.push(`<li>${satirIci(m[1])}</li>`);
+    } else {
+      kapat();
+      out.push(`<p>${satirIci(s)}</p>`);
+    }
+  }
+  kapat();
+  return out.join("\n");
+}
+
+// Markdown görselleri göreli yolla (<job>_frames/x.jpg) referans veriyor;
+// sunucuda /out altından servis ediliyorlar.
+function duzelt(src, jobId) {
+  if (/^https?:/.test(src)) return src;
+  return "/out/" + src.replace(/^\.\//, "");
+}
+
+async function saglik() {
+  try {
+    const h = await (await fetch("/health")).json();
+    const iyi = h.groq_key && h.ocr_ok;
+    const renk = iyi ? "var(--ok)" : "var(--warn)";
+    let t = `<span class="dot" style="background:${renk}"></span>${h.llm_provider} · ${h.output_language}`;
+    if (!h.groq_key) t += " · GROQ_API_KEY yok!";
+    else if (!h.ocr_ok) t += " · OCR dili eksik!";
+    $("#saglik").innerHTML = t;
+  } catch { $("#saglik").textContent = "sunucuya ulaşılamıyor"; }
+}
+
+async function listele() {
+  const isler = await (await fetch("/api/jobs")).json();
+  const html = isler.map((j) => {
+    const renk = j.status === "done" ? "var(--ok)" : j.status === "error" ? "var(--err)" : "var(--accent)";
+    const etiket = j.status === "done" ? "hazır"
+      : j.status === "error" ? "hata"
+      : asamaAdi(j.stage);
+    const ad = j.title || j.source.split(/[\\/]/).pop();
+    return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}">
+      <div class="baslik">${esc(ad)}</div>
+      <div class="alt"><span class="dot" style="background:${renk}"></span>${esc(etiket)}</div>
+    </button>`;
+  }).join("") || `<div class="ipucu" style="padding:16px">Henüz iş yok.</div>`;
+
+  // Her 5 sn'de DOM'u komple yeniden yazmak odağı kaçırıyor ve tıklamayı
+  // bozuyordu; değişmediyse dokunma.
+  if (html === sonListe) return;
+  sonListe = html;
+  $("#liste").innerHTML = html;
+
+  document.querySelectorAll(".is").forEach((el) =>
+    el.onclick = () => goster(el.dataset.id));
+}
+
+function asamaHtml(job) {
+  const i = ASAMALAR.findIndex(([k]) => k.split("|").includes(job.stage));
+  return `<div class="asamalar">` + ASAMALAR.map(([k, ad], n) => {
+    if (n < i) return `<div class="asama bitti">✓ ${ad}</div>`;
+    if (n === i) return `<div class="asama aktif"><div class="spin"></div>${ad}</div>`;
+    return `<div class="asama">○ ${ad}</div>`;
+  }).join("") + `</div>`;
+}
+
+async function goster(id) {
+  secili = id;
+  clearInterval(zamanlayici);
+  $("#bos").style.display = "none";
+  $("#icerik").style.display = "block";
+  await ciz();
+  listele();
+  zamanlayici = setInterval(async () => {
+    const bitti = await ciz();
+    if (bitti) { clearInterval(zamanlayici); listele(); }
+  }, 2500);
+}
+
+async function ciz() {
+  const j = await (await fetch(`/jobs/${secili}`)).json();
+
+  if (j.status === "error") {
+    $("#durum").innerHTML = `<h1>Hata</h1><div class="hata">${esc(j.error || "bilinmeyen")}</div>`;
+    $("#ozet").innerHTML = "";
+    return true;
+  }
+  if (j.status !== "done") {
+    $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>` + asamaHtml(j);
+    $("#ozet").innerHTML = "";
+    return false;
+  }
+
+  const m = j.meta || {};
+  const rozetler = [
+    `${m.sections || 0} bölüm`,
+    m.frames_used ? `${m.frames_used} slayt OCR` : null,
+    `eleştirmen +${m.critic_added || 0} madde`,
+    m.transcript_repaired ? "transkript onarıldı" : null,
+    m.subtitle_lang ? `altyazı: ${m.subtitle_lang}${m.subtitle_auto ? " (otomatik)" : ""}` : null,
+  ].filter(Boolean);
+
+  $("#durum").innerHTML = `<div class="rozetler">` +
+    rozetler.map((r) => `<span class="rozet">${esc(r)}</span>`).join("") +
+    `<a class="rozet" href="/jobs/${j.id}/markdown" target="_blank">markdown</a></div>`;
+  $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
+  return true;
+}
+
+$("#btn").onclick = async () => {
+  const kaynak = $("#kaynak").value.trim();
+  if (!kaynak) return;
+  $("#btn").disabled = true;
+  try {
+    const r = await fetch("/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: kaynak }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const j = await r.json();
+    $("#kaynak").value = "";
+    goster(j.job_id);
+  } catch (e) {
+    alert("Gönderilemedi: " + e.message);
+  } finally {
+    $("#btn").disabled = false;
+  }
+};
+$("#kaynak").onkeydown = (e) => { if (e.key === "Enter") $("#btn").click(); };
+
+saglik();
+listele();
+setInterval(listele, 5000);
+</script>
+</body>
+</html>
