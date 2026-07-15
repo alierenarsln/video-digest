@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     stage        TEXT,
     source       TEXT NOT NULL,
     title        TEXT,
+    provider     TEXT,
     callback_url TEXT,
     error        TEXT,
     result_path  TEXT,
@@ -33,13 +34,15 @@ def init() -> None:
         conn.executescript(SCHEMA)
 
 
-def create_job(job_id: str, source: str, callback_url: Optional[str]) -> None:
+def create_job(
+    job_id: str, source: str, callback_url: Optional[str], provider: str
+) -> None:
     now = time.time()
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, status, stage, source, callback_url, created_at, updated_at)"
-            " VALUES (?, 'queued', 'queued', ?, ?, ?, ?)",
-            (job_id, source, callback_url, now, now),
+            "INSERT INTO jobs (id, status, stage, source, provider, callback_url,"
+            " created_at, updated_at) VALUES (?, 'queued', 'queued', ?, ?, ?, ?, ?)",
+            (job_id, source, provider, callback_url, now, now),
         )
 
 
@@ -65,8 +68,8 @@ def get(job_id: str) -> Optional[dict]:
 def list_jobs(limit: int = 50) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT id, status, stage, source, title, error, created_at, updated_at, meta"
-            " FROM jobs ORDER BY created_at DESC LIMIT ?",
+            "SELECT id, status, stage, source, title, provider, error, created_at,"
+            " updated_at, meta FROM jobs ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     out = []

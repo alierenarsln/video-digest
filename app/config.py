@@ -30,17 +30,18 @@ SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-opus-4-8")
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# Ölçüldü — ücretsiz VE katı JSON şeması destekleyen modeller arasından:
-#   tencent/hy3:free              -> 3/3 bölüm, doğru Türkçe başlıklar (EN İYİ)
-#   google/gemma-4-26b-a4b-it:free-> 3/3 bölüm, çok verimli (296 token)
-#   nvidia/nemotron-3-super-120b  -> 1M bağlam ama tek jenerik bölüm buldu (KÖTÜ)
-#   openai/gpt-oss-20b:free       -> boş yanıt (düşünme bütçeyi yiyor)
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "tencent/hy3:free")
-# ÖLÇÜLDÜ: hy3 max_tokens=8000 verildiğinde JSON'u BOŞ dizi olarak döndürüyor
-# ({"sections": []}), 4000'de üç denemenin üçünde de doğru sonuç veriyor. Sebebi
-# belirsiz (model tuhaflığı), ama davranış tekrarlanabilir — bu yüzden çıktı
-# bütçesi burada sabitleniyor. Model değiştirirseniz bu değeri yeniden ölçün.
-OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 4000)
+# Ölçüldü — ücretsiz VE katı JSON şeması destekleyenler arasından, TEKRARLI test:
+#   google/gemma-4-26b-a4b-it:free -> 6/6 sağlam (SEÇİLEN). Verimli de.
+#   tencent/hy3:free               -> GÜVENİLMEZ: 3 denemeden 1'i boş ya da kesik
+#                                     JSON döndürüyor. Bütçe meselesi değil,
+#                                     rastgele. Tek testte iyi görünüp aldatıyor.
+#   nvidia/nemotron-3-super-120b   -> 1M bağlamlı AMA 3/3 tek jenerik bölüm (KÖTÜ)
+#   openai/gpt-oss-20b:free        -> boş yanıt
+# Model değiştirirseniz TEK denemeye güvenmeyin; en az 3 kez koşup ölçün.
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free")
+# gemma 8000'de de sağlam ölçüldü. Çağıranların Anthropic'e göre verdiği cömert
+# değerleri (16000) yine de kısıyoruz: gereksiz büyük bütçe kotayı hızlandırmıyor.
+OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 8000)
 
 # Özet/bölümleme/eleştirmen/onarım hangi sağlayıcıda koşsun?
 #   anthropic  : Claude — en iyi, 1M bağlam, ücretli
@@ -77,18 +78,51 @@ OUTPUT_LANGUAGE = os.environ.get("OUTPUT_LANGUAGE", "Türkçe").strip()
 # çok istek. OpenRouter'ın derdi istek SAYISI (50/gün), bağlamı 262k → BÜYÜK
 # pencereler, az istek. Aynı boyutu ikisine vermek birini mutlaka bozar:
 # Groq'ta 413 (kotadan büyük istek asla geçmez), OpenRouter'da günlük kota biter.
-_DAR = LLM_PROVIDER == "groq"
-BOUNDARY_WINDOW_CHARS = _int("BOUNDARY_WINDOW_CHARS", 6_000 if _DAR else 120_000)
-MAX_SECTION_CHARS = _int("MAX_SECTION_CHARS", 8_000 if _DAR else 40_000)
-# Onarım istisna: metni yeniden yazdığı için ÇIKTISI ≈ GİRDİSİ kadar. Bölümleme
-# 120k karakter okuyup kısa bir liste döndürebilir, onarım döndüremez — penceresi
-# çıktı bütçesine göre sınırlanmalı (OpenRouter'da ~4000 token ≈ 12k karakter).
-REPAIR_WINDOW_CHARS = _int(
-    "REPAIR_WINDOW_CHARS",
-    4_000 if _DAR else (10_000 if LLM_PROVIDER == "openrouter" else 40_000),
-)
+#
+# İş BAŞINA sağlayıcı seçilebildiği için bunlar sabit değil, sağlayıcıya bakan
+# bir tablo. "repair" istisna: metni yeniden yazdığı için çıktısı ≈ girdisi kadar,
+# bölümleme gibi 120k okuyup kısa liste döndüremez.
+PROVIDER_WINDOWS = {
+    "groq":       {"boundary": 6_000,   "section": 8_000,  "repair": 4_000},
+    "openrouter": {"boundary": 120_000, "section": 40_000, "repair": 10_000},
+    "anthropic":  {"boundary": 120_000, "section": 40_000, "repair": 40_000},
+}
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
+
+def provider_available(name: str) -> bool:
+    return {
+        "groq": bool(GROQ_API_KEY),
+        "openrouter": bool(OPENROUTER_API_KEY),
+        "anthropic": bool(ANTHROPIC_API_KEY),
+    }.get(name, False)
+
+
+# Arayüzde gösterilen açıklamalar — hepsi ÖLÇÜLMÜŞ değerler, tahmin değil.
+PROVIDER_INFO = {
+    "groq": {
+        "ad": "Groq — sınırsız video",
+        "model": GROQ_LLM_MODEL,
+        "artisi": "Günlük sınır yok, istediğiniz kadar video işleyin.",
+        "eksisi": "Dakikada 8000 token kotası → video başına ~10-15 dk.",
+    },
+    "openrouter": {
+        "ad": "OpenRouter — daha iyi bölümleme",
+        "model": OPENROUTER_MODEL,
+        "artisi": "262k bağlam: tüm transkript tek çağrıda bölümlenir, daha tutarlı.",
+        "eksisi": "Günde 50 istek → ~3 video/gün. ($10 kredi ile 1000/gün)",
+    },
+    "anthropic": {
+        "ad": "Claude — en iyi kalite",
+        "model": SUMMARY_MODEL,
+        "artisi": "En iyi eleştirmen geçişi ve bölümleme, 1M bağlam, kota derdi yok.",
+        "eksisi": "Ücretli.",
+    },
+}
+
+# resolve(): result_path API'de ve n8n callback'inde dışarı veriliyor. Göreli
+# bırakılırsa yalnızca sunucunun çalışma dizininden anlamlı olur ve başka bir
+# dizinden okuyan istemci "dosya yok" alır.
+DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 WORK_DIR = DATA_DIR / "work"
 OUT_DIR = DATA_DIR / "out"
 DB_PATH = DATA_DIR / "jobs.sqlite3"

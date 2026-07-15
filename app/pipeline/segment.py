@@ -9,12 +9,11 @@ import asyncio
 import re
 from dataclasses import dataclass
 
-from ..llm import complete_json, language_rule
+from ..llm import complete_json, language_rule, windows
 from .transcribe import Segment, fmt_ts
 
 BOUNDARY_CONCURRENCY = 3
 
-from ..config import BOUNDARY_WINDOW_CHARS, MAX_SECTION_CHARS  # noqa: F401
 # Her pencere kendi sınırlarını bulduğu için birleştirince aşırı parçalanma
 # oluyor (6 dakikalık klipte 18 bölüm). Birbirine bu kadar yakın sınırları tek
 # bölüm sayıyoruz.
@@ -85,7 +84,8 @@ def _slice(segments: list[Segment], start: float, end: float) -> list[Segment]:
 
 def _split_oversized(section: Section) -> list[Section]:
     """Tek bir konu bile bağlam bütçesini aşabiliyorsa alt parçalara böl."""
-    if len(section.text) <= MAX_SECTION_CHARS:
+    limit = windows()["section"]
+    if len(section.text) <= limit:
         return [section]
 
     parts: list[Section] = []
@@ -93,7 +93,7 @@ def _split_oversized(section: Section) -> list[Section]:
     size = 0
     for seg in section.segments:
         piece = len(seg.text) + 12
-        if size + piece > MAX_SECTION_CHARS and current:
+        if size + piece > limit and current:
             parts.append(
                 Section(
                     title=f"{section.title} ({len(parts) + 1}. kısım)",
@@ -118,18 +118,19 @@ def _split_oversized(section: Section) -> list[Section]:
 
 
 def _windows(segments: list[Segment]) -> list[list[Segment]]:
+    limit = windows()["boundary"]
     out: list[list[Segment]] = []
     current: list[Segment] = []
     size = 0
     for seg in segments:
         current.append(seg)
         size += len(seg.text) + 12
-        if size >= BOUNDARY_WINDOW_CHARS:
+        if size >= limit:
             out.append(current)
             current, size = [], 0
     if current:
         # Son kırıntıyı ayrı pencere yapma; öncekine ekle.
-        if out and size < BOUNDARY_WINDOW_CHARS // 3:
+        if out and size < limit // 3:
             out[-1].extend(current)
         else:
             out.append(current)

@@ -8,7 +8,7 @@ import asyncio
 import shutil
 import traceback
 
-from . import db, notify
+from . import db, llm, notify
 from .config import OUT_DIR, WORK_DIR
 from .pipeline import fetch, frames, render, repair, segment, summarize, transcribe
 
@@ -23,6 +23,10 @@ async def _process(job_id: str) -> None:
     job = db.get(job_id)
     if job is None:
         return
+
+    # Sağlayıcı iş başına seçiliyor (arayüzden). Pencere boyutları buna bağlı
+    # olduğu için boru hattı başlamadan ÖNCE ayarlanmalı.
+    llm.set_provider(job.get("provider") or llm.provider())
 
     work = WORK_DIR / job_id
     work.mkdir(parents=True, exist_ok=True)

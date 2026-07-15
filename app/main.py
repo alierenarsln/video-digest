@@ -17,7 +17,9 @@ from .config import (
     LLM_PROVIDER,
     OUT_DIR,
     OUTPUT_LANGUAGE,
+    PROVIDER_INFO,
     ensure_dirs,
+    provider_available,
 )
 from .pipeline import frames
 
@@ -27,6 +29,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 class JobRequest(BaseModel):
     source: str
     callback_url: str | None = None
+    # Boş = sunucunun varsayılanı (.env / anahtar durumu).
+    provider: str | None = None
+
+
+def _providers() -> list[dict]:
+    """Anahtarı olan sağlayıcılar + arayüzde gösterilecek artı/eksileri."""
+    out = []
+    for name, info in PROVIDER_INFO.items():
+        if not provider_available(name):
+            continue
+        out.append({"id": name, "varsayilan": name == LLM_PROVIDER, **info})
+    return out
 
 
 @asynccontextmanager
@@ -59,6 +73,11 @@ async def list_jobs() -> list[dict]:
     return db.list_jobs()
 
 
+@app.get("/api/providers")
+async def providers() -> list[dict]:
+    return _providers()
+
+
 @app.get("/health")
 async def health() -> dict:
     ocr_ok, ocr_message = frames.check_ocr_langs() if ENABLE_FRAMES else (True, "kapalı")
@@ -78,10 +97,23 @@ async def create_job(req: JobRequest) -> dict:
     if not req.source.strip():
         raise HTTPException(400, "source boş olamaz")
 
+    secilen = (req.provider or LLM_PROVIDER).strip().lower()
+    if not provider_available(secilen):
+        raise HTTPException(
+            400,
+            f"'{secilen}' sağlayıcısının anahtarı tanımlı değil. "
+            f"Kullanılabilir: {', '.join(p['id'] for p in _providers()) or 'hiçbiri'}",
+        )
+
     job_id = uuid.uuid4().hex[:12]
-    db.create_job(job_id, req.source.strip(), req.callback_url or DEFAULT_CALLBACK_URL)
+    db.create_job(
+        job_id,
+        req.source.strip(),
+        req.callback_url or DEFAULT_CALLBACK_URL,
+        secilen,
+    )
     await worker.enqueue(job_id)
-    return {"job_id": job_id, "status": "queued"}
+    return {"job_id": job_id, "status": "queued", "provider": secilen}
 
 
 @app.get("/jobs/{job_id}")

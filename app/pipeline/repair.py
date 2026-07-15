@@ -15,11 +15,9 @@ import asyncio
 import re
 
 from ..config import REPAIR_MIN_CAPS, REPAIR_MIN_PUNCT, REPAIR_MODE
-from ..llm import complete_json
+from ..llm import complete_json, windows
 from .frames import Frame, as_prompt_text, for_range
 from .transcribe import Segment, fmt_ts
-
-from ..config import REPAIR_WINDOW_CHARS as WINDOW_CHARS  # noqa: F401
 
 REPAIR_CONCURRENCY = 3
 # Onarım sonrası metin bu oranın altına düşerse model özetlemiş demektir → reddet.
@@ -113,6 +111,7 @@ def needs_repair(segments: list[Segment]) -> bool:
 def _windows(segments: list[Segment]) -> list[list[Segment]]:
     """Pencerelere böl; mümkünse cümle sonunda veya sessizlik boşluğunda kes ki
     bir cümle iki pencereye bölünmesin."""
+    limit = windows()["repair"]
     out: list[list[Segment]] = []
     current: list[Segment] = []
     size = 0
@@ -120,14 +119,14 @@ def _windows(segments: list[Segment]) -> list[list[Segment]]:
     for i, seg in enumerate(segments):
         current.append(seg)
         size += len(seg.text) + 12
-        if size < WINDOW_CHARS:
+        if size < limit:
             continue
 
         ends_sentence = seg.text.rstrip().endswith((".", "!", "?"))
         gap = (
             segments[i + 1].start - seg.end > 0.8 if i + 1 < len(segments) else True
         )
-        if ends_sentence or gap or size > WINDOW_CHARS * 1.5:
+        if ends_sentence or gap or size > limit * 1.5:
             out.append(current)
             current, size = [], 0
 

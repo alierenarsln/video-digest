@@ -13,12 +13,14 @@ Her iki yol da şemaya uyması garantili JSON döndürür — çağıran taraf f
 import asyncio
 import json
 import re
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
 
 from .config import (
     ANTHROPIC_API_KEY,
+    PROVIDER_WINDOWS,
     GROQ_API_KEY,
     GROQ_BASE_URL,
     GROQ_CONCURRENCY,
@@ -36,6 +38,29 @@ from .config import (
 
 class LLMError(RuntimeError):
     pass
+
+
+# Sağlayıcı artık iş başına seçilebiliyor (arayüzden), bu yüzden import anında
+# sabitlenemez. ContextVar kullanıyoruz: worker her işin başında set_provider()
+# çağırıyor, boru hattının derinindeki modüller parametre taşımadan doğru
+# sağlayıcıyı görüyor.
+_provider: ContextVar[str] = ContextVar("llm_provider", default=LLM_PROVIDER)
+
+
+def set_provider(name: str) -> None:
+    if name not in PROVIDER_WINDOWS:
+        raise LLMError(f"Bilinmeyen sağlayıcı: {name}")
+    _provider.set(name)
+
+
+def provider() -> str:
+    return _provider.get()
+
+
+def windows() -> dict[str, int]:
+    """Aktif sağlayıcının pencere boyutları. Sağlayıcıya göre TERS yönde ayarlı —
+    bkz. config.PROVIDER_WINDOWS."""
+    return PROVIDER_WINDOWS[provider()]
 
 
 def language_rule() -> str:
@@ -249,13 +274,14 @@ async def complete_json(
     effort: str = "high",
     max_tokens: int = 32000,
 ) -> dict[str, Any]:
-    """Şemaya uyması garantili JSON döndürür."""
-    if LLM_PROVIDER == "anthropic":
+    """Şemaya uyması garantili JSON döndürür. Sağlayıcı iş başına seçilir."""
+    aktif = provider()
+    if aktif == "anthropic":
         return await _anthropic_json(system, user, schema, effort, max_tokens)
-    if LLM_PROVIDER == "groq":
+    if aktif == "groq":
         return await _groq_json(system, user, schema, effort, max_tokens)
-    if LLM_PROVIDER == "openrouter":
+    if aktif == "openrouter":
         if not OPENROUTER_API_KEY:
-            raise LLMError("LLM_PROVIDER=openrouter ama OPENROUTER_API_KEY boş.")
+            raise LLMError("Sağlayıcı openrouter seçildi ama OPENROUTER_API_KEY boş.")
         return await _openrouter_json(system, user, schema, effort, max_tokens)
-    raise LLMError(f"Bilinmeyen LLM_PROVIDER: {LLM_PROVIDER}")
+    raise LLMError(f"Bilinmeyen sağlayıcı: {aktif}")

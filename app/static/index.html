@@ -48,6 +48,24 @@
   #gonder button:disabled { opacity: .5; cursor: default; }
   .ipucu { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
+  #saglayicilar { border: 0; padding: 0; margin: 14px 0 0; }
+  #saglayicilar legend {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .6px; padding: 0 0 6px;
+  }
+  .sec {
+    display: block; border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 11px; margin-bottom: 7px; cursor: pointer; background: var(--panel);
+  }
+  .sec:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .sec:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sec input { margin: 0 7px 0 0; }
+  .sec .ad { font-size: 13px; font-weight: 600; }
+  .sec .model { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .sec .arti, .sec .eksi { font-size: 11px; margin-top: 3px; padding-left: 20px; }
+  .sec .arti { color: var(--ok); }
+  .sec .eksi { color: var(--warn); }
+
   #liste { overflow-y: auto; flex: 1; }
   /* Gerçek <button>: klavyeyle gezilebilsin ve ekran okuyucu tıklanabilir görsün. */
   .is {
@@ -117,8 +135,11 @@
   <section id="sol">
     <div id="gonder">
       <input id="kaynak" type="text" placeholder="YouTube linki veya dosya yolu" autocomplete="off">
+      <fieldset id="saglayicilar">
+        <legend>Model</legend>
+      </fieldset>
       <button id="btn">Özetle</button>
-      <div class="ipucu">1 saatlik video ~10-15 dk. Sekmeyi kapatabilirsiniz, iş sunucuda devam eder.</div>
+      <div class="ipucu" id="ipucu"></div>
     </div>
     <div id="liste"></div>
   </section>
@@ -199,6 +220,24 @@ function duzelt(src, jobId) {
   return "/out/" + src.replace(/^\.\//, "");
 }
 
+async function saglayicilar() {
+  const ps = await (await fetch("/api/providers")).json();
+  if (!ps.length) {
+    $("#saglayicilar").innerHTML =
+      `<div class="ipucu" style="color:var(--err)">Hiçbir sağlayıcı anahtarı yok — .env doldurun.</div>`;
+    $("#btn").disabled = true;
+    return;
+  }
+  $("#saglayicilar").innerHTML = `<legend>Model</legend>` + ps.map((p) => `
+    <label class="sec">
+      <input type="radio" name="saglayici" value="${p.id}" ${p.varsayilan ? "checked" : ""}>
+      <span class="ad">${esc(p.ad)}</span>
+      <span class="model">${esc(p.model)}</span>
+      <div class="arti">+ ${esc(p.artisi)}</div>
+      <div class="eksi">− ${esc(p.eksisi)}</div>
+    </label>`).join("");
+}
+
 async function saglik() {
   try {
     const h = await (await fetch("/health")).json();
@@ -221,7 +260,8 @@ async function listele() {
     const ad = j.title || j.source.split(/[\\/]/).pop();
     return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}">
       <div class="baslik">${esc(ad)}</div>
-      <div class="alt"><span class="dot" style="background:${renk}"></span>${esc(etiket)}</div>
+      <div class="alt"><span class="dot" style="background:${renk}"></span>${esc(etiket)}${
+        j.provider ? ` · ${esc(j.provider)}` : ""}</div>
     </button>`;
   }).join("") || `<div class="ipucu" style="padding:16px">Henüz iş yok.</div>`;
 
@@ -290,12 +330,13 @@ async function ciz() {
 $("#btn").onclick = async () => {
   const kaynak = $("#kaynak").value.trim();
   if (!kaynak) return;
+  const secili = document.querySelector('input[name=saglayici]:checked');
   $("#btn").disabled = true;
   try {
     const r = await fetch("/jobs", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: kaynak }),
+      body: JSON.stringify({ source: kaynak, provider: secili ? secili.value : null }),
     });
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     const j = await r.json();
@@ -309,6 +350,10 @@ $("#btn").onclick = async () => {
 };
 $("#kaynak").onkeydown = (e) => { if (e.key === "Enter") $("#btn").click(); };
 
+$("#ipucu").textContent =
+  "1 saatlik video ~10-15 dk. Sekmeyi kapatabilirsiniz, iş sunucuda devam eder.";
+
+saglayicilar();
 saglik();
 listele();
 setInterval(listele, 5000);
