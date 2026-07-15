@@ -84,13 +84,24 @@ Videosu olmayan kaynakta (meeting kaydı, podcast) görsel katman kendiliğinden
 Özetleme, bölümleme, eleştirmen ve onarımın hepsi model çağrısı — bir LLM olmadan
 sistem transkript üretir ama özet üretemez. İki yol var, kod ikisini de destekler:
 
-| | `anthropic` | `groq` (varsayılan, anahtarsız) |
-|---|---|---|
-| Model | Claude Opus 4.8 | `openai/gpt-oss-120b` |
-| Maliyet | ücretli | **ücretsiz** (Whisper ile aynı anahtar) |
-| Bağlam | 1M | 131k |
-| Dakikalık kota | pratikte sorun değil | **8000 token** ← asıl kısıt |
-| Kalite | daha iyi, özellikle eleştirmen geçişinde | yeterli |
+| | `anthropic` | `groq` (varsayılan) | `openrouter` |
+|---|---|---|---|
+| Model | Claude Opus 4.8 | `openai/gpt-oss-120b` | `tencent/hy3:free` |
+| Maliyet | ücretli | **ücretsiz** (Whisper ile aynı anahtar) | **ücretsiz** |
+| Bağlam | 1M | 131k | 262k |
+| Asıl kısıt | yok | **8000 token/dk** | **50 istek/gün** |
+| Pratikte | en iyi kalite | **sınırsız video**, ~10-15 dk/video | **~3 video/gün**, daha az istek |
+
+**İki ücretsiz sağlayıcının kısıtı zıt yönde** ve bu mimariyi doğrudan etkiliyor.
+Groq'u token kotası boğuyor ama istek sayısı sınırsız → **küçük pencereler, çok
+istek**. OpenRouter'ı istek sayısı boğuyor ama bağlamı geniş → **büyük pencereler,
+az istek** (tüm transkript tek çağrıda bölümlenir, bu aynı zamanda daha iyi
+bölümleme demek). Pencere boyutları bu yüzden `config.py`'de sağlayıcıya göre
+otomatik ayarlanıyor; aynı boyutu ikisine vermek birini mutlaka bozar — Groq'ta
+kalıcı 413, OpenRouter'da günlük kotanın erken bitmesi.
+
+Varsayılan `groq`: günlük sınır olmadığı için istediğiniz kadar video işlersiniz.
+Az sayıda videoyu daha iyi bölümlemeyle işlemek isterseniz `LLM_PROVIDER=openrouter`.
 
 **Groq ücretsiz katmanının asıl sınırı bağlam değil, dakikalık token kotası** — ve
 Groq bu bütçeye istediğiniz `max_tokens`'ı da sayar (2k girdi + `max_tokens=16000`

@@ -19,8 +19,8 @@ from ..llm import complete_json
 from .frames import Frame, as_prompt_text, for_range
 from .transcribe import Segment, fmt_ts
 
-# Pencere + istenen çıktı, tek model isteğinin token kotasına sığmalı.
-WINDOW_CHARS = 4_000
+from ..config import REPAIR_WINDOW_CHARS as WINDOW_CHARS  # noqa: F401
+
 REPAIR_CONCURRENCY = 3
 # Onarım sonrası metin bu oranın altına düşerse model özetlemiş demektir → reddet.
 MIN_WORD_RATIO = 0.6

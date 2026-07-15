@@ -28,10 +28,28 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-opus-4-8")
 
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# Ölçüldü — ücretsiz VE katı JSON şeması destekleyen modeller arasından:
+#   tencent/hy3:free              -> 3/3 bölüm, doğru Türkçe başlıklar (EN İYİ)
+#   google/gemma-4-26b-a4b-it:free-> 3/3 bölüm, çok verimli (296 token)
+#   nvidia/nemotron-3-super-120b  -> 1M bağlam ama tek jenerik bölüm buldu (KÖTÜ)
+#   openai/gpt-oss-20b:free       -> boş yanıt (düşünme bütçeyi yiyor)
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "tencent/hy3:free")
+# ÖLÇÜLDÜ: hy3 max_tokens=8000 verildiğinde JSON'u BOŞ dizi olarak döndürüyor
+# ({"sections": []}), 4000'de üç denemenin üçünde de doğru sonuç veriyor. Sebebi
+# belirsiz (model tuhaflığı), ama davranış tekrarlanabilir — bu yüzden çıktı
+# bütçesi burada sabitleniyor. Model değiştirirseniz bu değeri yeniden ölçün.
+OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 4000)
+
 # Özet/bölümleme/eleştirmen/onarım hangi sağlayıcıda koşsun?
-#   anthropic : Claude — daha iyi, 1M bağlam, anahtar gerekir
-#   groq      : gpt-oss-120b — ücretsiz (Whisper ile aynı anahtar), 131k bağlam
-# Boş bırakılırsa: Anthropic anahtarı varsa anthropic, yoksa groq.
+#   anthropic  : Claude — en iyi, 1M bağlam, ücretli
+#   groq       : gpt-oss-120b — ücretsiz. Sınır: 8000 token/dk. İstek sayısı
+#                sınırsız → sınırsız video, ama yavaş ve istekler küçük olmalı.
+#   openrouter : tencent/hy3 — ücretsiz. Sınır: GÜNDE 50 İSTEK (kredi 0 iken;
+#                $10 kredi alınırsa 1000). 262k bağlam → büyük istek serbest,
+#                ama istek sayısı kıymetli.
+# Boş bırakılırsa: Anthropic anahtarı varsa anthropic, yoksa groq (sınırsız video).
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "").strip().lower() or (
     "anthropic" if ANTHROPIC_API_KEY else "groq"
 )
@@ -53,6 +71,22 @@ GROQ_CONCURRENCY = _int("GROQ_CONCURRENCY", 1)
 # Boş bırakmak dil karışmasına yol açabiliyor (başlık Türkçe, özet İngilizce),
 # çünkü prompt'lar Türkçe ama kaynak İngilizce.
 OUTPUT_LANGUAGE = os.environ.get("OUTPUT_LANGUAGE", "Türkçe").strip()
+
+# --- Pencere boyutları: SAĞLAYICIYA GÖRE ters yönde ayarlanır ---
+# Groq'un derdi token kotası (8000/dk), istek sayısı sınırsız → KÜÇÜK pencereler,
+# çok istek. OpenRouter'ın derdi istek SAYISI (50/gün), bağlamı 262k → BÜYÜK
+# pencereler, az istek. Aynı boyutu ikisine vermek birini mutlaka bozar:
+# Groq'ta 413 (kotadan büyük istek asla geçmez), OpenRouter'da günlük kota biter.
+_DAR = LLM_PROVIDER == "groq"
+BOUNDARY_WINDOW_CHARS = _int("BOUNDARY_WINDOW_CHARS", 6_000 if _DAR else 120_000)
+MAX_SECTION_CHARS = _int("MAX_SECTION_CHARS", 8_000 if _DAR else 40_000)
+# Onarım istisna: metni yeniden yazdığı için ÇIKTISI ≈ GİRDİSİ kadar. Bölümleme
+# 120k karakter okuyup kısa bir liste döndürebilir, onarım döndüremez — penceresi
+# çıktı bütçesine göre sınırlanmalı (OpenRouter'da ~4000 token ≈ 12k karakter).
+REPAIR_WINDOW_CHARS = _int(
+    "REPAIR_WINDOW_CHARS",
+    4_000 if _DAR else (10_000 if LLM_PROVIDER == "openrouter" else 40_000),
+)
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
 WORK_DIR = DATA_DIR / "work"

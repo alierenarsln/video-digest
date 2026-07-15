@@ -25,6 +25,10 @@ from .config import (
     GROQ_LLM_MODEL,
     GROQ_TPM,
     LLM_PROVIDER,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_MAX_OUTPUT,
+    OPENROUTER_MODEL,
     OUTPUT_LANGUAGE,
     SUMMARY_MODEL,
 )
@@ -174,6 +178,62 @@ async def _groq_json(
     raise LLMError(f"Groq isteği başarısız ({GROQ_LLM_MODEL}, bütçe {allowed} token): {last}")
 
 
+async def _openrouter_json(
+    system: str, user: str, schema: dict[str, Any], effort: str, max_tokens: int
+) -> dict[str, Any]:
+    """OpenRouter ücretsiz modelleri.
+
+    Groq'un tersi kısıt: token kotası değil, GÜNDE 50 İSTEK (kredi 0 iken; $10
+    kredi alınırsa 1000/gün) ve dakikada 20. Bağlam 262k olduğu için istekler
+    büyük olabilir — pencere boyutları config'de buna göre geniş tutuluyor.
+    """
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "out", "schema": schema, "strict": True},
+        },
+        # Çağıranlar Anthropic'e göre cömert değerler veriyor (16000); hy3 o
+        # değerlerde JSON'u BOŞ döndürüyor (ölçüldü). Bütçeyi sabitliyoruz.
+        "max_tokens": min(max_tokens, OPENROUTER_MAX_OUTPUT),
+    }
+
+    last = ""
+    async with httpx.AsyncClient(timeout=600) as client:
+        for attempt in range(5):
+            resp = await client.post(
+                f"{OPENROUTER_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                json=payload,
+            )
+            if resp.status_code == 429:
+                # Dakikalık sınır (20/dk) beklemekle geçer; GÜNLÜK sınır (50/gün)
+                # geçmez — mesajı olduğu gibi taşıyoruz ki ayırt edilebilsin.
+                await asyncio.sleep(min(_retry_after(resp, attempt) + 1, 65))
+                last = resp.text[:300]
+                continue
+            if resp.status_code != 200:
+                raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:400]}")
+
+            data = resp.json()
+            if "error" in data:
+                raise LLMError(f"OpenRouter: {str(data['error'])[:300]}")
+            choice = data["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise LLMError("Yanıt kesildi — max_tokens yetmedi.")
+            return _loads(choice["message"]["content"])
+
+    raise LLMError(
+        f"OpenRouter kotası doldu ({OPENROUTER_MODEL}). Ücretsiz katman günde 50 "
+        f"istek; bir video ~12-15 istek yiyor. Groq'a dönmek için LLM_PROVIDER=groq. "
+        f"Ayrıntı: {last}"
+    )
+
+
 def _loads(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
@@ -194,4 +254,8 @@ async def complete_json(
         return await _anthropic_json(system, user, schema, effort, max_tokens)
     if LLM_PROVIDER == "groq":
         return await _groq_json(system, user, schema, effort, max_tokens)
+    if LLM_PROVIDER == "openrouter":
+        if not OPENROUTER_API_KEY:
+            raise LLMError("LLM_PROVIDER=openrouter ama OPENROUTER_API_KEY boş.")
+        return await _openrouter_json(system, user, schema, effort, max_tokens)
     raise LLMError(f"Bilinmeyen LLM_PROVIDER: {LLM_PROVIDER}")

@@ -14,12 +14,7 @@ from .transcribe import Segment, fmt_ts
 
 BOUNDARY_CONCURRENCY = 3
 
-# Bölüm boyutu, tek bir model isteğinin token kotasına sığmalı: bölüm metni +
-# ekran metni + istenen çıktı, hepsi birlikte Groq'un 8000 TPM'ine girmek zorunda.
-MAX_SECTION_CHARS = 8_000
-# Konu sınırı arama penceresi. Tüm transkripti tek çağrıda göndermek Groq ücretsiz
-# katmanında ASLA çalışmaz (1 saatlik ders ~12k token > 8000 kota).
-BOUNDARY_WINDOW_CHARS = 6_000
+from ..config import BOUNDARY_WINDOW_CHARS, MAX_SECTION_CHARS  # noqa: F401
 # Her pencere kendi sınırlarını bulduğu için birleştirince aşırı parçalanma
 # oluyor (6 dakikalık klipte 18 bölüm). Birbirine bu kadar yakın sınırları tek
 # bölüm sayıyoruz.
