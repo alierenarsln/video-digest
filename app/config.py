@@ -134,6 +134,9 @@ IN_DOCKER = _bool("IN_DOCKER", False)
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 WORK_DIR = DATA_DIR / "work"
 OUT_DIR = DATA_DIR / "out"
+# Yüklenen dosyalar OUT_DIR'e KONULMAZ: orası /out altında servis ediliyor,
+# yüklediğiniz video internete açılırdı.
+UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "jobs.sqlite3"
 
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
@@ -189,5 +192,5 @@ MAX_FRAMES = _int("MAX_FRAMES", 80)
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, WORK_DIR, OUT_DIR):
+    for d in (DATA_DIR, WORK_DIR, OUT_DIR, UPLOAD_DIR):
         d.mkdir(parents=True, exist_ok=True)

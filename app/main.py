@@ -6,7 +6,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ from .config import (
     OUT_DIR,
     OUTPUT_LANGUAGE,
     PROVIDER_INFO,
+    UPLOAD_DIR,
     ensure_dirs,
     provider_available,
 )
@@ -61,6 +62,17 @@ def _providers() -> list[dict]:
             continue
         out.append({"id": name, "varsayilan": name == LLM_PROVIDER, **info})
     return out
+
+
+def _validate_provider(provider: str | None) -> str:
+    secilen = (provider or LLM_PROVIDER).strip().lower()
+    if not provider_available(secilen):
+        raise HTTPException(
+            400,
+            f"'{secilen}' sağlayıcısının anahtarı tanımlı değil. "
+            f"Kullanılabilir: {', '.join(p['id'] for p in _providers()) or 'hiçbiri'}",
+        )
+    return secilen
 
 
 @asynccontextmanager
@@ -130,6 +142,46 @@ async def providers() -> list[dict]:
     return _providers()
 
 
+@app.post("/jobs/upload")
+async def upload_job(
+    file: UploadFile = File(...),
+    provider: str | None = Form(None),
+    callback_url: str | None = Form(None),
+) -> dict:
+    """Dosya yükleyip iş oluşturur.
+
+    YouTube veri merkezi IP'lerini engellediği için sunucuda link indirmek
+    çalışmıyor; videoyu evde indirip buraya yüklemek o duvarı tamamen atlıyor.
+    Yükleme bitince makinenizi kapatabilirsiniz, iş sunucuda devam eder.
+    """
+    secilen = _validate_provider(provider)
+
+    job_id = uuid.uuid4().hex[:12]
+    # Kullanıcının dosya adına güvenmiyoruz (yol gezinme); yalnızca uzantıyı
+    # alıp adı kendimiz üretiyoruz.
+    ext = Path(file.filename or "").suffix.lower()[:10] or ".mp4"
+    dest = UPLOAD_DIR / f"{job_id}{ext}"
+
+    boyut = 0
+    try:
+        with dest.open("wb") as fh:
+            # Parça parça yaz: 1 GB'lık videoyu belleğe almak sunucuyu düşürür.
+            while chunk := await file.read(1024 * 1024):
+                fh.write(chunk)
+                boyut += len(chunk)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+
+    if boyut == 0:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, "boş dosya")
+
+    db.create_job(job_id, str(dest), callback_url or DEFAULT_CALLBACK_URL, secilen)
+    await worker.enqueue(job_id)
+    return {"job_id": job_id, "status": "queued", "provider": secilen, "bayt": boyut}
+
+
 def _job_id_of(name: str) -> str:
     """data/out içindeki bir girdinin hangi işe ait olduğunu çıkarır.
     Biçimler: <id>.md | <id>.transcript.txt | <id>.transcript.raw.txt | <id>_frames
@@ -170,6 +222,14 @@ async def delete_job(job_id: str) -> dict:
         bayt += _size_of(p)
         silinen.append(p.name)
         _remove(p)
+
+    # Yüklenmiş kaynak dosya OUT_DIR'de değil; ayrıca silinmeli yoksa video
+    # diskte öksüz kalır (en büyük dosya odur).
+    for p in UPLOAD_DIR.glob(f"{job_id}.*"):
+        bayt += _size_of(p)
+        silinen.append(p.name)
+        _remove(p)
+
     db.delete_job(job_id)
     return {"silinen": silinen, "bayt": bayt}
 
@@ -183,6 +243,7 @@ async def cleanup(uygula: bool = False) -> dict:
     """
     bilinen = db.all_ids()
     oksuz = [p for p in OUT_DIR.iterdir() if _job_id_of(p.name) not in bilinen]
+    oksuz += [p for p in UPLOAD_DIR.iterdir() if _job_id_of(p.name) not in bilinen]
     bayt = sum(_size_of(p) for p in oksuz)
 
     if uygula:
@@ -221,13 +282,7 @@ async def create_job(req: JobRequest) -> dict:
     if not req.source.strip():
         raise HTTPException(400, "source boş olamaz")
 
-    secilen = (req.provider or LLM_PROVIDER).strip().lower()
-    if not provider_available(secilen):
-        raise HTTPException(
-            400,
-            f"'{secilen}' sağlayıcısının anahtarı tanımlı değil. "
-            f"Kullanılabilir: {', '.join(p['id'] for p in _providers()) or 'hiçbiri'}",
-        )
+    secilen = _validate_provider(req.provider)
 
     job_id = uuid.uuid4().hex[:12]
     db.create_job(

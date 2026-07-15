@@ -48,6 +48,22 @@
   #gonder button:disabled { opacity: .5; cursor: default; }
   .ipucu { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
+  #yukleAlan {
+    display: block; margin-top: 8px; padding: 9px 11px; cursor: pointer;
+    border: 1px dashed var(--line); border-radius: 8px; font-size: 12px;
+    color: var(--muted); text-align: center;
+  }
+  #yukleAlan:hover { border-color: var(--accent); color: var(--accent); }
+  #yukleAlan.dolu { border-style: solid; border-color: var(--ok); color: var(--ok); }
+  #yukleAlan:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #dosya { display: none; }
+
+  #ilerleme {
+    display: none; height: 4px; background: var(--line);
+    border-radius: 99px; margin-top: 8px; overflow: hidden;
+  }
+  #ilerlemeCubuk { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
   #saglayicilar { border: 0; padding: 0; margin: 14px 0 0; }
   #saglayicilar legend {
     font-size: 11px; color: var(--muted); text-transform: uppercase;
@@ -146,7 +162,12 @@
 <main>
   <section id="sol">
     <div id="gonder">
-      <input id="kaynak" type="text" placeholder="YouTube linki veya dosya yolu" autocomplete="off">
+      <input id="kaynak" type="text" placeholder="YouTube linki" autocomplete="off">
+      <label id="yukleAlan">
+        <input id="dosya" type="file" accept="video/*,audio/*,.mp4,.mkv,.webm,.mov,.m4a,.mp3,.wav">
+        <span id="yukleMetin">…veya bir video/ses dosyası seçin</span>
+      </label>
+      <div id="ilerleme"><div id="ilerlemeCubuk"></div></div>
       <fieldset id="saglayicilar">
         <legend>Model</legend>
       </fieldset>
@@ -376,25 +397,82 @@ $("#temizlik").onclick = async () => {
   $("#bakimSonuc").textContent = ` ${d.adet} öğe silindi (${mb(d.bayt)})`;
 };
 
+// Link ve dosya birbirini dışlar; biri seçilince diğeri temizlenir.
+$("#dosya").onchange = () => {
+  const f = $("#dosya").files[0];
+  if (f) {
+    $("#kaynak").value = "";
+    $("#yukleMetin").textContent = `${f.name} (${mb(f.size)})`;
+    $("#yukleAlan").classList.add("dolu");
+  }
+};
+$("#kaynak").oninput = () => {
+  if ($("#kaynak").value.trim()) sifirlaDosya();
+};
+
+function sifirlaDosya() {
+  $("#dosya").value = "";
+  $("#yukleMetin").textContent = "…veya bir video/ses dosyası seçin";
+  $("#yukleAlan").classList.remove("dolu");
+}
+
+// Yükleme XHR ile: fetch yükleme ilerlemesi vermiyor, 500 MB'lık videoda
+// göstergesiz beklemek "dondu mu?" hissi veriyor.
+function yukle(dosya, provider) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", dosya);
+    if (provider) fd.append("provider", provider);
+
+    const x = new XMLHttpRequest();
+    x.open("POST", "/jobs/upload");
+    x.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      $("#ilerleme").style.display = "block";
+      $("#ilerlemeCubuk").style.width = (e.loaded / e.total * 100) + "%";
+      $("#btn").textContent = `Yükleniyor… ${Math.round(e.loaded / e.total * 100)}%`;
+    };
+    x.onload = () => {
+      let d = {};
+      try { d = JSON.parse(x.responseText); } catch {}
+      x.status < 300 ? resolve(d) : reject(new Error(d.detail || `HTTP ${x.status}`));
+    };
+    x.onerror = () => reject(new Error("bağlantı koptu"));
+    x.send(fd);
+  });
+}
+
 $("#btn").onclick = async () => {
   const kaynak = $("#kaynak").value.trim();
-  if (!kaynak) return;
+  const dosya = $("#dosya").files[0];
+  if (!kaynak && !dosya) return;
+
   const secili = document.querySelector('input[name=saglayici]:checked');
+  const p = secili ? secili.value : null;
   $("#btn").disabled = true;
   try {
-    const r = await fetch("/jobs", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: kaynak, provider: secili ? secili.value : null }),
-    });
-    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-    const j = await r.json();
-    $("#kaynak").value = "";
+    let j;
+    if (dosya) {
+      j = await yukle(dosya, p);
+      sifirlaDosya();
+    } else {
+      const r = await fetch("/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: kaynak, provider: p }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      j = await r.json();
+      $("#kaynak").value = "";
+    }
     goster(j.job_id);
   } catch (e) {
     alert("Gönderilemedi: " + e.message);
   } finally {
     $("#btn").disabled = false;
+    $("#btn").textContent = "Özetle";
+    $("#ilerleme").style.display = "none";
+    $("#ilerlemeCubuk").style.width = "0";
   }
 };
 $("#kaynak").onkeydown = (e) => { if (e.key === "Enter") $("#btn").click(); };

@@ -2,6 +2,8 @@
 # hem yerel Python 3.14'te kurulabilsin diye. Sabit pinlerde 3.14 için hazır
 # tekerlek bulunamıyor ve pip kaynaktan derlemeye kalkıyor.
 fastapi>=0.115
+# Dosya yükleme (multipart form) icin FastAPI'nin zorunlu bagimliligi.
+python-multipart>=0.0.9
 uvicorn[standard]>=0.34
 pydantic>=2.10
 httpx>=0.28
