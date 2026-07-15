@@ -196,6 +196,7 @@
 // onay üretiyordu; tek adımda birleştirildi. repair de atlanabilir — bu yüzden
 // tamamlanmış adımlar sırayla değil, yalnızca AKTİF olan vurgulanarak gösteriliyor.
 const ASAMALAR = [
+  ["awaiting_download",         "Ev makinesinde indirilmeyi bekliyor"],
   ["fetch",                     "Video indiriliyor"],
   ["subtitles|transcribe",      "Transkript hazırlanıyor"],
   ["frames",                    "Slaytlar okunuyor (OCR)"],
@@ -343,7 +344,16 @@ async function ciz() {
     return true;
   }
   if (j.status !== "done") {
-    $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>` + asamaHtml(j);
+    let not = "";
+    if (j.stage === "awaiting_download") {
+      // Bu "takıldı" değil, tasarım: sunucu YouTube'a erişemiyor, ev makinesi
+      // indirecek. Söylemezsek kullanıcı bozuk sanır.
+      not = `<div class="ipucu" style="margin-top:14px;max-width:52ch">
+        Sunucu YouTube'a erişemiyor (veri merkezi IP'leri engelli). Ev
+        makinenizdeki <code>agent.ps1</code> bu linki indirip yükleyecek —
+        çalışmıyorsa başlatın. İş kaybolmaz, sırada bekler.</div>`;
+    }
+    $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>` + asamaHtml(j) + not;
     $("#ozet").innerHTML = "";
     return false;
   }

@@ -122,6 +122,14 @@ PROVIDER_INFO = {
 # resolve(): result_path API'de ve n8n callback'inde dışarı veriliyor. Göreli
 # bırakılırsa yalnızca sunucunun çalışma dizininden anlamlı olur ve başka bir
 # dizinden okuyan istemci "dosya yok" alır.
+# --- Yerel indirici ---
+# true: link (http/https) işleri indirilmeyi BEKLER; sunucu kendi indirmeye
+# çalışmaz. Sebep: YouTube veri merkezi IP'lerini engelliyor ("Sign in to confirm
+# you're not a bot") — canlı sunucuda gerçek videoyla doğrulandı. Ev IP'si geçiyor.
+# Ev makinesindeki agent.ps1 bekleyen işleri görür, indirir, yükler.
+# Yerel kullanımda false: makine zaten ev IP'sinde, doğrudan indirir.
+USE_LOCAL_AGENT = _bool("USE_LOCAL_AGENT", False)
+
 # --- Erişim koruması ---
 # BOŞ = koruma yok. Yalnızca 127.0.0.1'e bağlıyken güvenli; internete açık bir
 # sunucuda (Coolify/VPS) boş bırakmak, linki bulan herkesin iş atıp API

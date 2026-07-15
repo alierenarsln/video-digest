@@ -101,8 +101,11 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segme
     if TRANSCRIBE_LANGUAGE:
         data["language"] = TRANSCRIBE_LANGUAGE
 
+    # Groq geçici olarak 502/503 dönebiliyor (gerçek bir işte görüldü). Bu arka
+    # planda koşan, dakikalarca süren bir iş — 30 saniye deneyip pes etmek koca
+    # bir işi geçici bir kesinti yüzünden çöpe atıyor. Sabırlı davran.
     last_error: Exception | None = None
-    for attempt in range(5):
+    for attempt in range(8):
         try:
             with path.open("rb") as fh:
                 resp = await client.post(
@@ -112,8 +115,19 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segme
                     data=data,
                 )
             if resp.status_code == 429:
-                wait = float(resp.headers.get("retry-after", 2 ** attempt))
+                wait = float(resp.headers.get("retry-after", 2**attempt))
                 await asyncio.sleep(min(wait, 60))
+                continue
+            if resp.status_code >= 500:
+                # Groq'un kendi sorunu; bizim istekte düzeltilecek bir şey yok.
+                last_error = RuntimeError(f"Groq {resp.status_code}")
+                bekle = min(2**attempt, 60)
+                print(
+                    f"[transcribe] {path.name}: Groq {resp.status_code} (gecici), "
+                    f"{bekle} sn sonra yeniden ({attempt + 1}/8)",
+                    flush=True,
+                )
+                await asyncio.sleep(bekle)
                 continue
             resp.raise_for_status()
             payload = resp.json()
@@ -124,8 +138,10 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segme
             ]
         except httpx.HTTPError as exc:
             last_error = exc
-            await asyncio.sleep(2 ** attempt)
-    raise RuntimeError(f"Groq transkripsiyonu başarısız ({path.name}): {last_error}")
+            await asyncio.sleep(min(2**attempt, 60))
+    raise RuntimeError(
+        f"Groq transkripsiyonu başarısız ({path.name}), 8 deneme: {last_error}"
+    )
 
 
 async def transcribe(audio: Path, work: Path) -> list[Segment]:

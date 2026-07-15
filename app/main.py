@@ -25,6 +25,7 @@ from .config import (
     OUTPUT_LANGUAGE,
     PROVIDER_INFO,
     UPLOAD_DIR,
+    USE_LOCAL_AGENT,
     ensure_dirs,
     provider_available,
 )
@@ -94,12 +95,18 @@ async def lifespan(app: FastAPI):
     if ENABLE_FRAMES:
         ok, message = frames.check_ocr_langs()
         print(f"[ocr] {'OK' if ok else 'UYARI'}: {message}", flush=True)
-    task = asyncio.create_task(worker.loop())
+    # Referansı tut: asyncio görevlerine güçlü referans tutulmazsa çöp toplayıcı
+    # onları çalışırken toplayabiliyor.
+    gorevler = [
+        asyncio.create_task(worker.loop()),
+        asyncio.create_task(worker.kurtarici()),
+    ]
     # Yeniden başlatmadan sağ çıkan işleri kuyruğa geri koy.
     for job_id in db.pending_ids():
         await worker.enqueue(job_id)
     yield
-    task.cancel()
+    for g in gorevler:
+        g.cancel()
 
 
 app = FastAPI(title="video-digest", lifespan=lifespan)
@@ -142,23 +149,49 @@ async def providers() -> list[dict]:
     return _providers()
 
 
-@app.post("/jobs/upload")
-async def upload_job(
+@app.get("/api/pending-downloads")
+async def pending_downloads() -> list[dict]:
+    """Ev makinesindeki agent'ın indirmesi gereken linkler."""
+    return [
+        {"id": j["id"], "source": j["source"]}
+        for j in db.list_jobs(200)
+        if j["stage"] == "awaiting_download" and j["status"] == "waiting"
+    ]
+
+
+@app.post("/jobs/{job_id}/attach")
+async def attach_file(
+    job_id: str,
     file: UploadFile = File(...),
-    provider: str | None = Form(None),
-    callback_url: str | None = Form(None),
+    subtitles: UploadFile | None = File(None),
 ) -> dict:
-    """Dosya yükleyip iş oluşturur.
+    """Agent'ın evde indirdiği dosyayı bekleyen işe bağlar ve kuyruğa alır.
 
-    YouTube veri merkezi IP'lerini engellediği için sunucuda link indirmek
-    çalışmıyor; videoyu evde indirip buraya yüklemek o duvarı tamamen atlıyor.
-    Yükleme bitince makinenizi kapatabilirsiniz, iş sunucuda devam eder.
+    subtitles: agent linkten altyazı da çekebildiyse json3 dosyası. Sunucu linki
+    hiç görmediği için altyazıyı kendisi bulamaz; gönderilmezse Whisper'a düşer
+    ve elle yazılmış altyazının kalite + kota avantajı kaybolur.
     """
-    secilen = _validate_provider(provider)
+    job = db.get(job_id)
+    if job is None:
+        raise HTTPException(404, "iş bulunamadı")
+    if job["stage"] != "awaiting_download":
+        raise HTTPException(409, f"iş indirme beklemiyor (aşama: {job['stage']})")
 
-    job_id = uuid.uuid4().hex[:12]
-    # Kullanıcının dosya adına güvenmiyoruz (yol gezinme); yalnızca uzantıyı
-    # alıp adı kendimiz üretiyoruz.
+    dest, boyut = await _save_upload(file, job_id)
+
+    if subtitles is not None and subtitles.filename:
+        # fetch.from_file bu dosyayı videonun yanında arıyor.
+        sub_path = UPLOAD_DIR / f"{dest.stem}.subs.json3"
+        sub_path.write_bytes(await subtitles.read())
+    # Kaynağı indirilen dosyayla değiştir; link artık gerekmiyor.
+    db.update(job_id, source=str(dest), status="queued", stage="queued")
+    await worker.enqueue(job_id)
+    return {"job_id": job_id, "bayt": boyut}
+
+
+async def _save_upload(file: UploadFile, job_id: str) -> tuple[Path, int]:
+    # Dosya adına güvenmiyoruz (yol gezinme); yalnızca uzantıyı alıp adı
+    # kendimiz üretiyoruz.
     ext = Path(file.filename or "").suffix.lower()[:10] or ".mp4"
     dest = UPLOAD_DIR / f"{job_id}{ext}"
 
@@ -176,7 +209,24 @@ async def upload_job(
     if boyut == 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "boş dosya")
+    return dest, boyut
 
+
+@app.post("/jobs/upload")
+async def upload_job(
+    file: UploadFile = File(...),
+    provider: str | None = Form(None),
+    callback_url: str | None = Form(None),
+) -> dict:
+    """Dosya yükleyip iş oluşturur.
+
+    YouTube veri merkezi IP'lerini engellediği için sunucuda link indirmek
+    çalışmıyor; videoyu evde indirip buraya yüklemek o duvarı tamamen atlıyor.
+    Yükleme bitince makinenizi kapatabilirsiniz, iş sunucuda devam eder.
+    """
+    secilen = _validate_provider(provider)
+    job_id = uuid.uuid4().hex[:12]
+    dest, boyut = await _save_upload(file, job_id)
     db.create_job(job_id, str(dest), callback_url or DEFAULT_CALLBACK_URL, secilen)
     await worker.enqueue(job_id)
     return {"job_id": job_id, "status": "queued", "provider": secilen, "bayt": boyut}
@@ -285,12 +335,16 @@ async def create_job(req: JobRequest) -> dict:
     secilen = _validate_provider(req.provider)
 
     job_id = uuid.uuid4().hex[:12]
-    db.create_job(
-        job_id,
-        req.source.strip(),
-        req.callback_url or DEFAULT_CALLBACK_URL,
-        secilen,
-    )
+    kaynak = req.source.strip()
+    db.create_job(job_id, kaynak, req.callback_url or DEFAULT_CALLBACK_URL, secilen)
+
+    # Sunucu YouTube'a erişemiyorsa link işleri kuyruğa GİRMEZ: ev makinesindeki
+    # agent onları indirip /attach ile bağlayana kadar bekler. Böylece telefondan
+    # link atıp PC açılınca işlenmesini sağlayabiliyoruz.
+    if USE_LOCAL_AGENT and kaynak.startswith(("http://", "https://")):
+        db.update(job_id, status="waiting", stage="awaiting_download")
+        return {"job_id": job_id, "status": "waiting", "provider": secilen}
+
     await worker.enqueue(job_id)
     return {"job_id": job_id, "status": "queued", "provider": secilen}
 

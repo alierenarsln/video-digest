@@ -161,12 +161,32 @@ async def from_file(path: Path, work: Path) -> Source:
     await _to_wav(local, audio)
     video = local if (ENABLE_FRAMES and await _has_stream(local, "v")) else None
 
+    # Ev agent'ı linki indirirken altyazıyı da çekmiş olabilir; videonun yanına
+    # <ad>.subs.json3 olarak bırakıyor. Sunucu linki hiç görmediği için altyazıyı
+    # kendisi bulamaz — bu olmazsa elle yazılmış altyazının kalite ve kota
+    # avantajı kaybolur, her şey Whisper'a düşer.
+    subs: list[Segment] | None = None
+    sub_meta: dict = {}
+    yan = path.parent / f"{path.stem}.subs.json3"
+    if yan.exists():
+        try:
+            subs = subtitles.parse_json3(yan)
+            sub_meta = {"subtitle_lang": "agent", "subtitle_auto": False}
+            print(
+                f"[fetch] agent'in getirdigi altyazi kullaniliyor ({len(subs)} satir)"
+                f" - transkript adimi atlanacak",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"[fetch] yandaki altyazi okunamadi, Whisper'a donuluyor: {exc}", flush=True)
+
     return Source(
         audio_path=audio,
         video_path=video,
+        subtitles=subs,
         title=path.stem,
         duration=await _probe_duration(audio),
-        meta={"local_path": str(path)},
+        meta={"local_path": str(path), **sub_meta},
     )
 
 

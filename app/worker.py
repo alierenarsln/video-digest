@@ -13,10 +13,36 @@ from .config import OUT_DIR, WORK_DIR
 from .pipeline import fetch, frames, render, repair, segment, summarize, transcribe
 
 _queue: asyncio.Queue[str] = asyncio.Queue()
+# Kuyrukta veya işlenmekte olan işler. Kurtarıcının aynı işi ikinci kez kuyruğa
+# koymasını engelliyor.
+_ucusta: set[str] = set()
 
 
 async def enqueue(job_id: str) -> None:
+    _ucusta.add(job_id)
     await _queue.put(job_id)
+
+
+async def kurtarici(aralik: int = 60) -> None:
+    """Kuyruğa girmiş ama işlenmemiş işleri bulup geri koyar.
+
+    Gerçek bir koşuda bir iş 'queued' durumunda asılı kaldı ve yalnızca sunucu
+    yeniden başlatılınca işlendi; kök neden tekrar üretilemedi. Sebebi ne olursa
+    olsun (kaybolan kuyruk girdisi, ölen görev) sonuç kabul edilemez: iş sessizce
+    kaybolur ve kimse fark etmez. Bu döngü onu kendiliğinden toparlar.
+    """
+    while True:
+        await asyncio.sleep(aralik)
+        try:
+            for job_id in db.pending_ids():
+                if job_id not in _ucusta:
+                    print(
+                        f"[kurtarici] {job_id} kuyrukta unutulmus, geri konuyor",
+                        flush=True,
+                    )
+                    await enqueue(job_id)
+        except Exception as exc:
+            print(f"[kurtarici] hata: {exc}", flush=True)
 
 
 async def _process(job_id: str) -> None:
@@ -142,5 +168,12 @@ async def loop() -> None:
         job_id = await _queue.get()
         try:
             await _run_one(job_id)
+        except BaseException as exc:
+            # except Exception yetmez: CancelledError gibi bir BaseException
+            # döngüyü sessizce öldürür ve o andan sonra HİÇBİR iş işlenmez.
+            print(f"[worker] {job_id} beklenmedik sekilde dustu: {exc!r}", flush=True)
+            if isinstance(exc, asyncio.CancelledError):
+                raise
         finally:
+            _ucusta.discard(job_id)
             _queue.task_done()
