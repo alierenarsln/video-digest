@@ -1,0 +1,44 @@
+/* ── Tanık typography ─────────────────────────────────────────────
+   Source Serif 4 for headlines & long-form reading (the editorial
+   voice). IBM Plex Sans for UI chrome. IBM Plex Mono for every
+   MEASUREMENT — timestamps, compression ratios, counts, confidence
+   medians. The mono/serif split is load-bearing: numbers the product
+   stakes a claim on are always monospaced so they read as instrument
+   readouts, not prose. */
+
+:root {
+  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* size scale */
+  --fs-display: 46px;
+  --fs-h1: 32px;
+  --fs-h2: 24px;
+  --fs-h3: 19px;
+  --fs-lg: 17px;
+  --fs-body: 15px;
+  --fs-sm: 13px;
+  --fs-mono: 13px;
+  --fs-caption: 12px;
+  --fs-micro: 11px;
+
+  /* line heights */
+  --lh-tight: 1.12; /* @kind other */
+  --lh-snug: 1.3; /* @kind other */
+  --lh-body: 1.62; /* @kind other */
+  --lh-mono: 1.45; /* @kind other */
+
+  /* weights */
+  --fw-light: 300; /* @kind other */
+  --fw-regular: 400; /* @kind other */
+  --fw-medium: 500; /* @kind other */
+  --fw-semibold: 600; /* @kind other */
+  --fw-bold: 700; /* @kind other */
+
+  /* tracking */
+  --track-tight: -0.02em; /* @kind other */
+  --track-normal: 0; /* @kind other */
+  --track-wide: 0.02em; /* @kind other */
+  --track-caps: 0.08em; /* @kind other */
+}

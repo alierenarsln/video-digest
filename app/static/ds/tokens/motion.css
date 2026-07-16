@@ -1,0 +1,21 @@
+/* ── Tanık motion ─────────────────────────────────────────────────
+   Calm and honest. Fades and measured slides; no bounce, no spring.
+   Movement should feel like a page settling, never like a toy. */
+:root {
+  --dur-1: 120ms; /* @kind other */
+  --dur-2: 200ms; /* @kind other */
+  --dur-3: 320ms; /* @kind other */
+  --dur-4: 500ms; /* @kind other */
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* @kind other */
+  --ease-out: cubic-bezier(0, 0, 0.15, 1); /* @kind other */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* @kind other */
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms; /* @kind other */
+    --dur-2: 0ms; /* @kind other */
+    --dur-3: 0ms; /* @kind other */
+    --dur-4: 0ms; /* @kind other */
+  }
+}

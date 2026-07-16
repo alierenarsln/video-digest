@@ -1,0 +1,95 @@
+/* ── Tanık color system ───────────────────────────────────────────
+   Editorial-instrument palette. Warm paper base, warm ink, one
+   terracotta accent used sparingly. Signals are QUIET by design —
+   no red alarms. Recovery reads as a calm win; uncertainty as an
+   invitation; a page we couldn't read is stated neutrally with
+   evidence attached. Base scales first, semantic aliases below. */
+
+:root {
+  /* warm paper surfaces (light) */
+  --paper-0: #ffffff;
+  --paper-1: #faf7f1;
+  --paper-2: #f3eee3;
+  --paper-3: #ece5d6;
+
+  /* warm ink */
+  --ink-0: #1b1712;
+  --ink-1: #3b352c;
+  --ink-2: #6a6356;
+  --ink-3: #99917f;
+
+  /* hairlines */
+  --line-1: #e6dfd0;
+  --line-2: #d6ccb8;
+
+  /* terracotta accent */
+  --accent: #c2410c;
+  --accent-strong: #9a3208;
+  --accent-soft: #f0d8ca;
+  --accent-tint: #faede3;
+
+  /* quiet signals — base hue + faint tint background */
+  --sig-recovered: #b23c0b;   /* what we saved (accent family) */
+  --sig-recovered-bg: #faece2;
+  --sig-uncertain: #8f6817;   /* ochre — an invitation, not alarm */
+  --sig-uncertain-bg: #f6ecd3;
+  --sig-quarantine: #566069;  /* slate — "couldn't read", evidence attached */
+  --sig-quarantine-bg: #ecedef;
+  --sig-verified: #4c6a4f;    /* sage — corrected / confirmed */
+  --sig-verified-bg: #e6ede4;
+
+  /* ── semantic aliases (reference these in components) ── */
+  --surface-app: var(--paper-1);
+  --surface-card: var(--paper-0);
+  --surface-sunken: var(--paper-2);
+  --surface-inset: var(--paper-3);
+
+  --text-strong: var(--ink-0);
+  --text-body: var(--ink-1);
+  --text-muted: var(--ink-2);
+  --text-faint: var(--ink-3);
+  --text-accent: var(--accent);
+  --text-on-accent: #fdf6f0;
+
+  --border-hair: var(--line-1);
+  --border-strong: var(--line-2);
+  --border-accent: var(--accent);
+
+  --focus-ring: var(--accent);
+  --selection-bg: var(--accent-soft);
+}
+
+/* ── dark theme ─────────────────────────────────────────────────
+   Warm dark — same paper/ink relationship inverted, not a cold
+   gray. Accent lifts slightly for legibility on dark. */
+[data-theme="dark"] {
+  --paper-0: #211d17;
+  --paper-1: #1a1611;
+  --paper-2: #262119;
+  --paper-3: #2f2920;
+
+  --ink-0: #f4eee1;
+  --ink-1: #e3dccd;
+  --ink-2: #a89f8d;
+  --ink-3: #79715f;
+
+  --line-1: #352f24;
+  --line-2: #453d2e;
+
+  --accent: #e26a35;
+  --accent-strong: #f0824f;
+  --accent-soft: #4a2a17;
+  --accent-tint: #2e1d12;
+
+  --sig-recovered: #e97a44;
+  --sig-recovered-bg: #33200f;
+  --sig-uncertain: #cba24c;
+  --sig-uncertain-bg: #2f2611;
+  --sig-quarantine: #94a0ac;
+  --sig-quarantine-bg: #23262a;
+  --sig-verified: #8fb193;
+  --sig-verified-bg: #1c2a1e;
+
+  --text-on-accent: #1b1712;
+  --selection-bg: #4a2a17;
+}

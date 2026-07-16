@@ -382,3 +382,7 @@ async def get_markdown(job_id: str) -> str:
 # yolla (<job_id>_frames/...) referans veriyor.
 ensure_dirs()
 app.mount("/out", StaticFiles(directory=OUT_DIR), name="out")
+
+# Tasarım sistemi (ds/tokens/*.css) buradan geliyor. index.html artık CSS'i
+# gömülü taşımıyor; token'lar zip'ten birebir kopyalandığı için ayrı dosyalar.
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

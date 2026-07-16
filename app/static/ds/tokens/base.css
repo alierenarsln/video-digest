@@ -1,0 +1,66 @@
+/* ── Tanık base ───────────────────────────────────────────────────
+   Minimal element defaults. Applies the paper/ink foundation and
+   the serif/sans/mono roles. Import LAST (after tokens). */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface-app);
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-feature-settings: "kern", "liga", "calt";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--selection-bg); }
+
+/* headings default to the editorial serif */
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  color: var(--text-strong);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-tight);
+  margin: 0;
+}
+
+p { margin: 0; text-wrap: pretty; }
+
+/* every measurement is monospaced */
+code, kbd, samp, .mono { font-family: var(--font-mono); font-size: var(--fs-mono); }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  transition: color var(--dur-1) var(--ease-standard);
+}
+a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* small-caps eyebrow / label utility */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-1);
+}
+
+img { max-width: 100%; display: block; }
+
+/* shared keyframes (calm — no bounce) */
+@keyframes tnk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes tnk-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(280%); } }
+@keyframes tnk-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

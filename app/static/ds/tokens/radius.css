@@ -1,0 +1,8 @@
+/* ── Tanık radius ─────────────────────────────────────────────────
+   Sharp / instrument-like. Nothing rounder than 4px except pills. */
+:root {
+  --radius-0: 0;
+  --radius-1: 2px;
+  --radius-2: 4px;
+  --radius-pill: 999px;
+}

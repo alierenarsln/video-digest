@@ -1,0 +1,18 @@
+/* ── Tanık elevation ──────────────────────────────────────────────
+   The system prefers hairline borders over shadows. Shadows are
+   subtle and warm-tinted; reserved for floating surfaces (menus,
+   dialogs, the enlarged recovered-visual viewer). */
+:root {
+  --shadow-0: none;
+  --shadow-1: 0 1px 2px rgba(27, 23, 18, 0.06);
+  --shadow-2: 0 2px 10px rgba(27, 23, 18, 0.09);
+  --shadow-3: 0 10px 34px rgba(27, 23, 18, 0.14);
+
+  /* focus ring composition */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+[data-theme="dark"] {
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 10px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 12px 38px rgba(0, 0, 0, 0.6);
+}
