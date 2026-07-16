@@ -102,6 +102,19 @@ bunları okusa videonun ne dediğini bilmeli.
 
 _SYNTH_SYSTEM += language_rule()
 
+# Defter "6 madde geri eklendi" diyemez: sayı tek başına anlamsız, kullanıcıya
+# NEYİN riskte olduğunu söylemez. "3 sayı, 2 tanım, 1 uyarı" söyler. Tür listesi
+# uydurulmadı — eleştirmenin zaten aradığı kategorilerin ta kendisi (bkz.
+# _CRITIC_SYSTEM). kaynak ayrı bir eksen: tür NE kaçtığını, kaynak NEREDEN
+# kurtarıldığını söyler; bir sayı ekrandan da gelebilir konuşmadan da.
+CRITIC_TURLER = ("sayı", "isim", "tanım", "uyarı", "istisna", "adım")
+CRITIC_KAYNAKLAR = ("ekran", "konuşma")
+
+# Bu kelime sayısının altındaki bölümde sıkışma oranı ölçüm değil gürültü:
+# 30 kelimelik girdiden "6:1" üretmek rakam uydurmaktır. Ölçemiyorsak
+# söylemeyiz — defterin kendi alçakgönüllülüğü buradan başlıyor.
+_MIN_COMPRESSION_INPUT = 120
+
 _CRITIC_SCHEMA = {
     "type": "object",
     "properties": {
@@ -112,8 +125,10 @@ _CRITIC_SCHEMA = {
                 "properties": {
                     "ts": {"type": "string"},
                     "text": {"type": "string"},
+                    "tur": {"type": "string", "enum": list(CRITIC_TURLER)},
+                    "kaynak": {"type": "string", "enum": list(CRITIC_KAYNAKLAR)},
                 },
-                "required": ["ts", "text"],
+                "required": ["ts", "text", "tur", "kaynak"],
                 "additionalProperties": False,
             },
         }
@@ -141,10 +156,20 @@ Kurallar:
 - Sadece GERÇEKTEN eksik olanı bildir. Özette farklı kelimelerle zaten varsa bildirme.
 - OCR gürültüsünü eksik bilgi sanma. Anlamlı bir bilgi çıkaramıyorsan atla.
 - Her madde için transkriptteki zaman damgasını ver.
+- Her madde için tur ver: sayı (sayı/oran/tarih/fiyat/versiyon), isim (kişi/ürün/\
+kütüphane/komut/dosya), tanım, uyarı, istisna (istisna veya karşı örnek), adım.
+Birden çok türe uyuyorsa en belirleyici olanı seç.
+- Her madde için kaynak ver: bilgi YALNIZCA ekran metninde geçiyorsa (konuşmacı \
+söylememiş) "ekran", transkriptte geçiyorsa "konuşma". Emin değilsen "konuşma" de — \
+"ekran" bir iddiadır, kanıtı olmalı.
 - text alanı, özete olduğu gibi eklenebilecek tam bir cümle olsun.
 - Eksik bir şey yoksa boş liste döndür. Liste doldurmak için madde uydurma."""
 
 _CRITIC_SYSTEM += language_rule()
+
+
+def _kelime_say(metin: str) -> int:
+    return len(metin.split())
 
 
 @dataclass
@@ -154,6 +179,28 @@ class SectionSummary:
     points: list[tuple[float, str]]
     terms: list[tuple[str, str]] = field(default_factory=list)
     frames: list[Frame] = field(default_factory=list)
+    # Eleştirmenin bu bölüme geri eklediği maddeler: (tur, kaynak).
+    critic_items: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def compression(self) -> float | None:
+        """Kaç kelime girdi, kaç kelime çıktı. "41:1 sıkıştı" bunun okunuşu.
+
+        Defter ÖLÇTÜĞÜ boşlukları bilir (karantina, düşük güven); ÖLÇEMEDİĞİNİ
+        bilmez. Bu oran, ölçülemeyenin ölçülebilir vekili: bir iddia değil,
+        "burada bir şey kaybolmuş olabilir, kritikse kaynağa dön" daveti.
+
+        Girdi = transkript + ekran metni. Yalnız transkript sayılsaydı, çok
+        slaytlı ama az konuşmalı bir bölüm "az sıkıştı" görünürdü — oysa en çok
+        kaybın olabileceği yer tam orası.
+        """
+        girdi = _kelime_say(self.section.text) + sum(_kelime_say(f.text) for f in self.frames)
+        cikti = _kelime_say(self.summary) + sum(_kelime_say(t) for _, t in self.points)
+        if not cikti or girdi < _MIN_COMPRESSION_INPUT:
+            # Çok kısa bölümde oran gürültü: 30 kelimelik girdiden "6:1" çıkarmak
+            # ölçüm değil, rakam üretmek olur.
+            return None
+        return girdi / cikti
 
 
 @dataclass
@@ -163,6 +210,13 @@ class Digest:
     glossary: list[tuple[str, str]]
     added_by_critic: int = 0
     frames_used: int = 0
+    # {"sayı": 3, "tanım": 2} — defter bunu "3 sayı · 2 tanım" diye yazar.
+    critic_types: dict[str, int] = field(default_factory=dict)
+    # [{"title": .., "ts": .., "ratio": 41.2}] — ölçülemeyenin ölçülebilir vekili.
+    compression: list[dict] = field(default_factory=list)
+    # Konuşmacının hiç söylemediği, YALNIZCA ekranda olan ve bu yüzden kaçmış
+    # olacak bilgi sayısı. Ürünün tek farkının ölçülebilir hâli.
+    critic_from_screen: int = 0
 
 
 async def _summarize_section(
@@ -232,6 +286,14 @@ async def _critic_one(s: SectionSummary) -> int:
         if not text:
             continue
         s.points.append((parse_ts(item["ts"]), text))
+        # Şema enum'u zorluyor ama sağlayıcılar arası şema desteği tek tip değil;
+        # beklenmedik etiket gelirse madde sayılmalı, sınıflandırma kaybolmalı.
+        tur = item.get("tur", "")
+        kaynak = item.get("kaynak", "")
+        s.critic_items.append((
+            tur if tur in CRITIC_TURLER else "",
+            kaynak if kaynak in CRITIC_KAYNAKLAR else "",
+        ))
         added += 1
 
     s.points.sort(key=lambda p: p[0])
@@ -347,6 +409,15 @@ async def summarize(
         max_tokens=2500,
     )
 
+    turler: dict[str, int] = {}
+    ekrandan = 0
+    for s in summaries:
+        for tur, kaynak in s.critic_items:
+            if tur:
+                turler[tur] = turler.get(tur, 0) + 1
+            if kaynak == "ekran":
+                ekrandan += 1
+
     return Digest(
         tldr=[t.strip() for t in synth["tldr"] if t.strip()],
         sections=summaries,
@@ -355,4 +426,19 @@ async def summarize(
         ),
         added_by_critic=added,
         frames_used=len(frames),
+        # Sunum sırası sabit (CRITIC_TURLER), sayıya göre değil: defter her koşuda
+        # aynı yerde aynı türü göstermeli, yoksa karşılaştırılamaz.
+        critic_types={t: turler[t] for t in CRITIC_TURLER if t in turler},
+        critic_from_screen=ekrandan,
+        # Ölçülemeyen bölüm (çok kısa) listeye HİÇ girmez; "?" göstermek yerine
+        # susmak doğru — olmayan ölçümü göstermek ürünün suçladığı şeydir.
+        compression=[
+            {
+                "title": s.section.title,
+                "ts": fmt_ts(s.section.start),
+                "ratio": round(s.compression, 1),
+            }
+            for s in summaries
+            if s.compression is not None
+        ],
     )

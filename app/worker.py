@@ -139,6 +139,15 @@ async def _process(job_id: str) -> None:
             "duration": source.duration,
             "sections": len(digest.sections),
             "critic_added": digest.added_by_critic,
+            # Defter "6 madde" değil "3 sayı · 2 tanım" der; sayı tek başına
+            # neyin riskte olduğunu söylemiyor.
+            "critic_types": digest.critic_types,
+            # Konuşmacının söylemediği, yalnızca ekranda olan bilgi: ürünün tek
+            # farkının ölçülebilir hâli. Tahmin değil, eleştirmenin etiketi.
+            "critic_from_screen": digest.critic_from_screen,
+            # Bölüm başına kaç kelime girip kaç kelime çıktı. Defterin
+            # ölçemediği boşluk için dürüst vekil: iddia değil, davet.
+            "compression": digest.compression,
             "frames_used": digest.frames_used,
             "transcript_punct": round(punct, 1),
             "transcript_caps": round(caps, 2),
