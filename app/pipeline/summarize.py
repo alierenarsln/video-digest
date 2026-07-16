@@ -8,7 +8,7 @@ sorar ve bulduklarını geri ekler.
 import asyncio
 from dataclasses import dataclass, field
 
-from ..llm import complete_json, language_rule
+from ..llm import complete_json, language_rule, windows
 from .frames import Frame, as_prompt_text, for_range
 from .segment import Section, parse_ts
 from .transcribe import fmt_ts
@@ -244,20 +244,74 @@ async def _summarize_section(
     )
 
 
-def _draft_text(summaries: list[SectionSummary]) -> str:
-    lines: list[str] = []
-    for s in summaries:
-        lines.append(f"## [{fmt_ts(s.section.start)}] {s.section.title}")
-        lines.append(s.summary)
-        lines.extend(f"- [{fmt_ts(ts)}] {text}" for ts, text in s.points)
-        lines.append("")
-    return "\n".join(lines)
-
-
 def _section_draft(s: SectionSummary) -> str:
     lines = [s.summary]
     lines += [f"- [{fmt_ts(ts)}] {text}" for ts, text in s.points]
     return "\n".join(lines)
+
+
+def _synth_blocks(summaries: list[SectionSummary]) -> list[str]:
+    """Sentez girdisi: yalnız bölüm başlığı + özeti, MADDELER değil.
+
+    Sentezin işi TL;DR + sözlük — bunun için bölüm özetleri yeter; her madde
+    zaten bölüm bazında çıktıda. _draft_text tüm maddeleri de gönderiyordu;
+    eleştirmen (özellikle tür ayrımı + sessizlik kuplajından sonra) çok madde
+    ekleyince taslak Groq kotasını aşıp sentezi düşürüyordu — gerçek koşuda
+    11122 token. Kodun kendi yorumu zaten "sentez yalnız özetleri görür"
+    diyordu; uygulama ona uydu.
+    """
+    return [
+        f"## [{fmt_ts(s.section.start)}] {s.section.title}\n{s.summary}"
+        for s in summaries
+    ]
+
+
+async def _synthesize(summaries: list[SectionSummary]) -> dict:
+    """Kotayı ASLA aşmayan sentez.
+
+    Özetler tek çağrıya sığıyorsa doğrudan. Sığmıyorsa (çok uzun video):
+    parti parti sentezle, sonra ara TL;DR'leri son bir geçişte birleştir —
+    hiyerarşik, hiçbir çağrı bütçeyi aşmaz. windows()["section"] burada da
+    karakter bütçesi (kod tabanının geri kalanıyla tutarlı, bkz. segment).
+    """
+    bloklar = _synth_blocks(summaries)
+    limit = windows()["section"]
+
+    async def bir(metin: str) -> dict:
+        return await complete_json(
+            system=_SYNTH_SYSTEM, user=metin, schema=_SYNTH_SCHEMA,
+            effort="high", max_tokens=2500,
+        )
+
+    if len("\n\n".join(bloklar)) <= limit:
+        return await bir("\n\n".join(bloklar))
+
+    partiler: list[list[str]] = []
+    grup, boyut = [], 0
+    for b in bloklar:
+        # +2: bloklar "\n\n" ile birleşiyor; ayıracı saymazsak parti limiti
+        # birkaç karakter aşabiliyor (kendi ilan ettiği sınıra uymalı).
+        if boyut + len(b) + 2 > limit and grup:
+            partiler.append(grup)
+            grup, boyut = [], 0
+        grup.append(b)
+        boyut += len(b) + 2
+    if grup:
+        partiler.append(grup)
+
+    print(f"[summarize] sentez {len(partiler)} partiye bölündü (uzun video)", flush=True)
+    aralar = [await bir("\n\n".join(g)) for g in partiler]
+
+    # Ara TL;DR'leri küçük; son geçiş güvenle sığar. Sözlükleri topla —
+    # tekilleştirme _merge_glossary'de zaten yapılıyor.
+    birlesik = "\n".join(
+        f"- {t}" for r in aralar for t in r.get("tldr", []) if t.strip()
+    )
+    final = await bir(birlesik)
+    final["glossary"] = (final.get("glossary") or []) + [
+        g for r in aralar for g in (r.get("glossary") or [])
+    ]
+    return final
 
 
 async def _critic_one(s: SectionSummary) -> int:
@@ -399,15 +453,9 @@ async def summarize(
 
     added = await _apply_critic(summaries)
 
-    # Sentez yalnızca bölüm ÖZETLERİNİ görür (ham transkripti değil), o yüzden
-    # uzun videoda bile kotaya sığar.
-    synth = await complete_json(
-        system=_SYNTH_SYSTEM,
-        user=_draft_text(summaries),
-        schema=_SYNTH_SCHEMA,
-        effort="high",
-        max_tokens=2500,
-    )
+    # Sentez yalnız bölüm özetlerini görür (maddeleri değil) ve gerekirse parti
+    # parti gider — uzun/yoğun videoda bile Groq kotasına sığar.
+    synth = await _synthesize(summaries)
 
     turler: dict[str, int] = {}
     ekrandan = 0
