@@ -63,11 +63,36 @@ def check_ocr_langs() -> tuple[bool, str]:
     return True, f"OCR dilleri hazir: {', '.join(wanted)}"
 
 
+# Karantina eşiği — kullanıcının GERÇEK arşivinde ölçüldü, uydurulmadı:
+# Tesseract kelime-güveni çöple sağlamı çift tepeyle ayırıyor (çöp medyan 23,
+# sağlam medyan 90-91). 60, o iki tepenin arasındaki vadide duruyor.
+# Külliyat büyüdükçe yeniden ölçülmeli; bu yüzden her karenin güveni LOGLANIR
+# (ateşlemese bile) — tek seferlik bulgu değil, izlenen değişmez.
+OCR_CONF_ESIK = 60.0
+
+# Ölçüm M3: bir sayfa "okunamaz" değildi, yalnızca 180° dönmüştü — düzeltilince
+# güven 23'ten 91'e çıktı ve Türkçe kusursuz okundu. Bu yüzden karantina SON
+# çare: önce onar, sonra ölç, sonra karantinaya al.
+# Ölçüm M4: Tesseract'ın kendi yön tespitine (OSD) GÜVENİLMEZ — güveni 11.24
+# çıktı ve Türkçe bir belgeye "Script=Cyrillic" dedi. O yüzden OSD'ye sorulmuyor;
+# dört açı ölçülüp en iyi medyan seçiliyor. 4x OCR maliyeti yalnızca düşük
+# güvenli karelerde ödeniyor.
+ACILAR = (0, 90, 180, 270)
+
+
 @dataclass
 class Frame:
     ts: float
     path: Path
     text: str
+    # Kelime-güveni medyanı. Defterin kanıtı; None = ölçülemedi (kelime yok).
+    conf: float | None = None
+    # Metin hangi açıda okundu? 0 dışında bir değer, onarımın işe yaradığını söyler.
+    rotation: int = 0
+    # True ise METİN LLM'E GİTMEZ. Düşük güvenli çöpü gerçek bilgi gibi vermek,
+    # ürünün tam olarak suçladığı şey. Kare yine de saklanır: defter "okuyamadım"
+    # derken sayfanın görüntüsünü masaya koymalı, kendi ölçümüne de kefil olmadan.
+    quarantined: bool = False
 
 
 async def _sample(video: Path, raw_dir: Path) -> list[tuple[float, Path]]:
@@ -113,6 +138,56 @@ def _dedupe(samples: list[tuple[float, Path]]) -> list[tuple[float, Path]]:
     return kept
 
 
+def _oku(img: Image.Image) -> tuple[str, float | None]:
+    """Tek okuma: metin + kelime-güveni medyanı.
+
+    image_to_string yerine image_to_data: güven olmadan çöple sağlamı ayıramayız.
+    Karakter saymak bunu YAPAMAZ — ölçüldü: çöp bol karakter üretir, uzunluk
+    sinyal değil. Güven ise çift tepe veriyor (23 vs 91).
+    """
+    d = pytesseract.image_to_data(
+        img, lang=OCR_LANGS, output_type=pytesseract.Output.DICT
+    )
+    kelimeler: list[str] = []
+    guvenler: list[float] = []
+    for kelime, guven in zip(d["text"], d["conf"]):
+        g = float(guven)
+        # -1 = kelime değil (blok/satır kaydı), atılır.
+        if kelime.strip() and g >= 0:
+            kelimeler.append(kelime.strip())
+            guvenler.append(g)
+
+    if not guvenler:
+        return "", None
+    guvenler.sort()
+    orta = len(guvenler) // 2
+    medyan = (
+        guvenler[orta]
+        if len(guvenler) % 2
+        else (guvenler[orta - 1] + guvenler[orta]) / 2
+    )
+    return " ".join(kelimeler), medyan
+
+
+def _en_iyi_aci(img: Image.Image) -> tuple[str, float | None, int]:
+    """Düşük güvenli kareyi karantinaya atmadan ÖNCE döndürmeyi dener.
+
+    Ölçüm: ters duran bir sayfa 23 → 91 güvene çıktı, metin kusursuzdu. OSD'ye
+    sormuyoruz (M4: güven 11.24, Türkçe'ye "Cyrillic" dedi); dört açıyı ölçüp en
+    iyi medyanı seçiyoruz — onarımın başarısının ÖLÇÜLEBİLİR sinyali bu.
+
+    Denoise/upscale/PSM taraması bilerek YOK: hangi çıktının daha doğru olduğunu
+    söyleyen ground-truth'suz bir sinyal olmadığı için durma kuralı yazılamıyor.
+    """
+    en_iyi = ("", None, 0)
+    for aci in ACILAR:
+        dondurulmus = img if aci == 0 else img.rotate(-aci, expand=True)
+        metin, medyan = _oku(dondurulmus)
+        if medyan is not None and (en_iyi[1] is None or medyan > en_iyi[1]):
+            en_iyi = (metin, medyan, aci)
+    return en_iyi
+
+
 def _ocr(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
     out_dir.mkdir(parents=True, exist_ok=True)
     frames: list[Frame] = []
@@ -120,20 +195,48 @@ def _ocr(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
     for index, (ts, src) in enumerate(samples):
         try:
             with Image.open(src) as img:
-                text = pytesseract.image_to_string(img, lang=OCR_LANGS)
+                text, conf = _oku(img)
+                rotation = 0
+                # ÖNCE ONAR, sonra ölç, sonra karantina. Karantina ilk refleks
+                # olsaydı yalnızca ters duran sağlam bir sayfayı atardık.
+                if conf is not None and conf < OCR_CONF_ESIK:
+                    text, conf, rotation = _en_iyi_aci(img)
         except Exception as exc:
             print(f"[frames] OCR başarısız ({src.name}): {exc}", flush=True)
             continue
 
         cleaned = "\n".join(line.strip() for line in text.splitlines() if line.strip())
-        # Metni olmayan kare = slayt değil, kamera görüntüsü. Özete katkısı yok.
-        if len(cleaned) < MIN_OCR_CHARS:
+
+        # Metinsiz kare = slayt değil, kamera görüntüsü. Özete katkısı yok ve
+        # okunamamış da değil — karantina değil, eleme.
+        if conf is None or len(cleaned) < MIN_OCR_CHARS:
             continue
+
+        # Onarım da kurtaramadıysa: metin LLM'e GİTMEZ ama kare saklanır.
+        # Sessizce atmak, defterin "okuyamadığını" gizlemesi olurdu.
+        karantina = conf < OCR_CONF_ESIK
+
+        # Ateşlemese bile her karenin güveni loglanır: eşik tek seferlik bir
+        # bulgudan değil, biriken ölçümden gelmeli.
+        print(
+            f"[frames] {int(ts):>5}s guven={conf:5.1f} aci={rotation:>3} "
+            f"{'KARANTINA' if karantina else 'ok'} ({len(cleaned)} karakter)",
+            flush=True,
+        )
 
         # index olmadan, aynı saniyeye düşen iki kare birbirinin üstüne yazardı.
         dst = out_dir / f"frame_{index:04d}_{int(ts):06d}.jpg"
         shutil.copy2(src, dst)
-        frames.append(Frame(ts=ts, path=dst, text=cleaned))
+        frames.append(
+            Frame(
+                ts=ts,
+                path=dst,
+                text="" if karantina else cleaned,
+                conf=round(conf, 1),
+                rotation=rotation,
+                quarantined=karantina,
+            )
+        )
     return frames
 
 
@@ -189,6 +292,16 @@ def for_range(frames: list[Frame], start: float, end: float) -> list[Frame]:
 
 
 def as_prompt_text(frames: list[Frame]) -> str:
+    """Yalnızca GÜVENİLİR ekran metni prompt'a girer.
+
+    Karantinalı kare buradan geçmez: düşük güvenli çöpü gerçek bilgi gibi
+    vermek, ürünün suçladığı arızanın ta kendisi olurdu. Kare kaybolmuyor —
+    defter onu kanıtıyla gösteriyor (bkz. Frame.quarantined).
+    """
     from .transcribe import fmt_ts
 
-    return "\n\n".join(f"[{fmt_ts(f.ts)} ekran]\n{f.text}" for f in frames)
+    return "\n\n".join(
+        f"[{fmt_ts(f.ts)} ekran]\n{f.text}"
+        for f in frames
+        if not f.quarantined and f.text
+    )

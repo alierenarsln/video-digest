@@ -155,6 +155,15 @@ input[type=text]::placeholder { color: var(--text-faint); }
 }
 .karantina .etiket { font-family: var(--font-mono); font-size: var(--fs-micro);
   letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--sig-quarantine); }
+/* Kanıt: defter "okuyamadım" derken sayfayı MASAYA KOYAR. Görüntü olmadan
+   karantina bir iddia olurdu; kullanıcının bakacak bir şeyi olmalı. */
+.karantina .kanit { flex: none; width: 84px; height: 108px; overflow: hidden;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-1);
+  background: var(--surface-inset); display: block; }
+.karantina .kanit img { width: 100%; height: 100%; object-fit: cover; }
+.karantina .olcumler { display: flex; gap: 16px; margin-top: 9px;
+  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
+.karantina .olcumler b { color: var(--text-strong); }
 
 /* özet gövdesi — okuma kolonu */
 .ozet { margin-top: var(--space-6); }
@@ -298,6 +307,14 @@ let secili = null, zamanlayici = null, sonListe = null;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+// Saniye -> MM:SS (saat varsa H:MM:SS). Arka uç karantinada ham saniye veriyor.
+const fmtTs = (sn) => {
+  const t = Math.max(0, Math.round(sn || 0));
+  const s = String(t % 60).padStart(2, "0");
+  const d = String(Math.floor(t / 60) % 60).padStart(2, "0");
+  const h = Math.floor(t / 3600);
+  return h ? `${h}:${d}:${s}` : `${d}:${s}`;
+};
 
 // ── tema ────────────────────────────────────────────────────────
 const temaUygula = (t) => {
@@ -518,6 +535,26 @@ function defterHtml(j) {
       giren metinden uzun. İçerik ekrandan gelmiş olabilir — ya da model eklemiş.
       O bölümü kaynakla karşılaştır.</div>` : ""}` : "";
 
+  // Karantina "3 bölge işlenemedi" demez; sayfayı masaya koyar. Nötr arduvaz —
+  // okuyamamak bir olgu, alarm değil. Defter kendi ölçümüne de kefil olmaz:
+  // kanıt önde, karar kullanıcının.
+  const kar = m.quarantined || [];
+  const karantinaHtml = kar.length ? kar.map((q) => `
+    <div class="karantina">
+      <a class="kanit" href="${esc(duzelt(q.src, j.id))}" target="_blank" rel="noopener">
+        <img src="${esc(duzelt(q.src, j.id))}" alt="okunamayan ekran ${esc(fmtTs(q.ts))}">
+      </a>
+      <div style="flex:1;min-width:0">
+        <div class="etiket">karantina · ${esc(fmtTs(q.ts))}</div>
+        <p class="ipucu" style="margin-top:5px">Bu ekranı okuyamadım. Metnini
+        özete katmadım — işte görüntüsü, sen bak.</p>
+        <div class="olcumler">
+          <span>güven medyanı <b>${q.conf}</b></span>
+          <span>denenen açı <b>4</b></span>
+        </div>
+      </div>
+    </div>`).join("") : "";
+
   return `<div class="kart vurgu" style="padding:0">
     <button class="defterBas" id="defterBas" type="button" aria-expanded="false">
       <span class="im" style="color:var(--sig-verified);font-family:var(--font-mono)">✓</span>
@@ -528,6 +565,7 @@ function defterHtml(j) {
     </button>
     <div class="defterIc" id="defterIc" style="display:none">
       ${ekran}
+      ${karantinaHtml}
       ${sikismaHtml}
       <div class="defterNot">Defter, ölçtüğü boşlukları bilir; ölçemediğini bilmez.</div>
       <div class="satir" style="margin-top:var(--space-4)">

@@ -148,7 +148,19 @@ async def _process(job_id: str) -> None:
             # Bölüm başına kaç kelime girip kaç kelime çıktı. Defterin
             # ölçemediği boşluk için dürüst vekil: iddia değil, davet.
             "compression": digest.compression,
-            "frames_used": digest.frames_used,
+            # frames_used = OKUNAN ekran. Karantinadakiler buraya girmez:
+            # "31 slayt okundu" derken okuyamadığımızı saymak yalan olurdu.
+            "frames_used": sum(1 for f in shots if not f.quarantined),
+            # Okuyamadıklarımız kaybolmuyor; defter kanıtıyla gösteriyor.
+            "quarantined": [
+                {
+                    "ts": f.ts,
+                    "conf": f.conf,
+                    "src": f"{assets_rel}/{f.path.name}",
+                }
+                for f in shots
+                if f.quarantined
+            ],
             "transcript_punct": round(punct, 1),
             "transcript_caps": round(caps, 2),
             "transcript_repaired": repaired,

@@ -3,6 +3,7 @@ tıklanabilir olur."""
 
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from .frames import ACILAR
 from .summarize import Digest
 from .transcribe import fmt_ts
 
@@ -50,7 +51,24 @@ def render(
             for frame in section.frames:
                 rel = f"{assets_rel}/{frame.path.name}"
                 out.append(f"![Ekran {fmt_ts(frame.ts)}]({rel})")
-                out.append(f"<sub>{_link(url, frame.ts)} ekran görüntüsü</sub>")
+                if frame.quarantined:
+                    # Karantina "s.4 okunamadı" deyip geçmez: sayfayı masaya
+                    # koyar. Defter kendi ölçümüne de kefil olmaz — karar
+                    # kullanıcının, kanıt önünde.
+                    out.append(
+                        f"<sub>{_link(url, frame.ts)} bu ekranı okuyamadım "
+                        f"(güven medyanı {frame.conf}, {len(ACILAR)} açı denendi). "
+                        f"Metnini özete katmadım — işte görüntüsü, sen bak.</sub>"
+                    )
+                else:
+                    dondu = (
+                        f", {frame.rotation}° döndürülerek okundu"
+                        if frame.rotation
+                        else ""
+                    )
+                    out.append(
+                        f"<sub>{_link(url, frame.ts)} ekran görüntüsü{dondu}</sub>"
+                    )
                 out.append("")
 
     if digest.glossary:
