@@ -10,7 +10,17 @@ import traceback
 
 from . import db, llm, notify
 from .config import OUT_DIR, WORK_DIR
-from .pipeline import fetch, frames, render, repair, segment, summarize, transcribe
+from .pipeline import (
+    document,
+    fetch,
+    frames,
+    render,
+    repair,
+    segment,
+    summarize,
+    transcribe,
+)
+from pathlib import Path
 
 _queue: asyncio.Queue[str] = asyncio.Queue()
 # Kuyrukta veya işlenmekte olan işler. Kurtarıcının aynı işi ikinci kez kuyruğa
@@ -56,6 +66,14 @@ async def _process(job_id: str) -> None:
 
     work = WORK_DIR / job_id
     work.mkdir(parents=True, exist_ok=True)
+
+    # PDF gezilemeyen bir kaynak (SPEC §0): ayrı hat — ses/kare yok, sayfa var.
+    # Ama AYNI defter: segment + summarize + karantina değişmeden koşar.
+    kaynak = job["source"]
+    if not kaynak.startswith(("http://", "https://")) and \
+            Path(kaynak).suffix.lower() == ".pdf":
+        await _process_document(job_id, Path(kaynak), work)
+        return
 
     db.update(job_id, status="running", stage="fetch")
     source = await fetch.fetch(job["source"], work)
@@ -170,6 +188,78 @@ async def _process(job_id: str) -> None:
             "transcript_punct": round(punct, 1),
             "transcript_caps": round(caps, 2),
             "transcript_repaired": repaired,
+            "transcript_path": str(transcript_path),
+        },
+    )
+    shutil.rmtree(work, ignore_errors=True)
+
+
+async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
+    """PDF hattı: sayfa metni (katman ya da OCR) → aynı segment/summarize/defter.
+
+    Ses/kare yok; sayfa numarası 'zaman' olarak kodlanıyor (bkz. document.py).
+    Kurtarılan görsel/sessizlik kavramları PDF'e uymaz (birincil kanal sayfanın
+    kendisi) — o alanlar boş kalır, arayüz buna göre uyarlanır.
+    """
+    if not pdf.exists():
+        raise RuntimeError(f"PDF bulunamadı: {pdf}")
+
+    title = pdf.stem
+    db.update(job_id, status="running", stage="pages", title=title)
+
+    assets_rel = f"{job_id}_pages"
+    pages = await asyncio.to_thread(
+        document.extract, pdf, OUT_DIR / assets_rel, assets_rel
+    )
+    segments = document.to_segments(pages)
+    if not segments:
+        raise RuntimeError(
+            "Hiçbir sayfadan güvenilir metin çıkmadı — belge tümüyle taranmış "
+            "ve okunamadı olabilir. Karantina kanıtları defterde."
+        )
+
+    transcript = transcribe.to_timestamped_text(segments)
+    transcript_path = OUT_DIR / f"{job_id}.transcript.txt"
+    transcript_path.write_text(transcript, encoding="utf-8")
+
+    db.update(job_id, stage="segment")
+    sections = await segment.split_into_sections(segments, title, transcript)
+
+    db.update(job_id, stage="summarize")
+    digest = await summarize.summarize(sections, transcript, [])
+
+    db.update(job_id, stage="render")
+    markdown = render.render_document(digest, title, pages, assets_rel)
+    out_path = OUT_DIR / f"{job_id}.md"
+    out_path.write_text(markdown, encoding="utf-8")
+
+    okunan = sum(1 for p in pages if not p.quarantined and p.text.strip())
+    oranlar = [p.word_ratio for p in pages if p.word_ratio is not None]
+
+    db.update(
+        job_id,
+        status="done",
+        stage="done",
+        result_path=str(out_path),
+        meta={
+            "kind": "document",
+            "pages": len(pages),
+            "pages_read": okunan,
+            "pages_text_layer": sum(1 for p in pages if p.source == "metin-katmani"),
+            "pages_ocr": sum(1 for p in pages if p.source == "ocr" and not p.quarantined),
+            "sections": len(digest.sections),
+            "critic_added": digest.added_by_critic,
+            "critic_types": digest.critic_types,
+            "compression": digest.compression,
+            # Okunamayan sayfalar kaybolmuyor; defter kanıtıyla gösteriyor.
+            "quarantined": [
+                {"ts": p.number, "conf": p.conf, "src": p.img_rel, "page": p.number}
+                for p in pages
+                if p.quarantined
+            ],
+            # SPEC §2.2 loglanmış sigorta: en düşük gerçek-kelime oranı. Kapı
+            # ateşlemese bile yazılır — külliyat bimodal olursa veri söyler.
+            "min_word_ratio": round(min(oranlar), 3) if oranlar else None,
             "transcript_path": str(transcript_path),
         },
     )

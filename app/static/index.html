@@ -254,8 +254,8 @@ input[type=text]::placeholder { color: var(--text-faint); }
 
         <div id="panelDosya" style="display:none">
           <label class="dosyaAlan" id="yukleAlan">
-            <input type="file" id="dosya" accept="video/*,audio/*,.mp4,.mkv,.webm,.mp3,.m4a,.wav" hidden>
-            <span id="yukleMetin">Bir video veya ses dosyası seç</span>
+            <input type="file" id="dosya" accept="video/*,audio/*,application/pdf,.mp4,.mkv,.webm,.mp3,.m4a,.wav,.pdf" hidden>
+            <span id="yukleMetin">Bir video, ses dosyası ya da PDF seç</span>
           </label>
           <div class="satir" style="margin-top:var(--space-3);justify-content:flex-end">
             <button class="btn" id="btnDosya" type="button">İşle</button>
@@ -290,6 +290,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
 const ASAMALAR = [
   ["awaiting_download",         "Ev makinesinde indirilmeyi bekliyor"],
   ["fetch",                     "Video indiriliyor"],
+  ["pages",                     "Sayfalar okunuyor (metin katmanı / OCR)"],
   ["subtitles|transcribe",      "Transkript hazırlanıyor"],
   ["frames",                    "Slaytlar okunuyor (OCR)"],
   ["repair",                    "Transkript onarılıyor"],
@@ -475,7 +476,15 @@ function asamaHtml(job) {
 // suçladığı şey olurdu. Arka uç üretmeye başlayınca burada belirirler.
 function defterHtml(j) {
   const m = j.meta || {};
-  const olcum = [
+  const belge = m.kind === "document";
+  const olcum = belge ? [
+    // PDF: ölçü birimi sayfa; "kaç okundu, kaçı metin-katmanı, kaçı OCR".
+    m.pages ? [`${m.pages}`, "sayfa"] : null,
+    m.pages_read != null ? [`${m.pages_read}`, "okundu"] : null,
+    m.pages_text_layer ? [`${m.pages_text_layer}`, "metin katmanı"] : null,
+    m.pages_ocr ? [`${m.pages_ocr}`, "OCR"] : null,
+    m.critic_added ? [`+${m.critic_added}`, "geri eklendi"] : null,
+  ].filter(Boolean) : [
     m.duration ? [`${Math.max(1, Math.round(m.duration / 60))}`, "dk"] : null,
     m.sections ? [`${m.sections}`, "bölüm"] : null,
     m.frames_used ? [`${m.frames_used}`, "slayt okundu"] : null,
@@ -526,8 +535,10 @@ function defterHtml(j) {
     <div class="eyebrow" style="margin-top:var(--space-5)">sıkışma</div>
     ${sik.map((x) => {
       const [ad, renk] = kademe(x.ratio);
+      // Belgede ts sayfa-saniye kodlu ("00:05"); "s. 5" göster.
+      const konum = belge ? "s. " + x.ts.split(":").reduce((a, b) => a * 60 + +b, 0) : x.ts;
       return `<div class="sikisma">
-        <span class="bolum">${esc(x.ts)} · ${esc(x.title)}</span>
+        <span class="bolum">${esc(konum)} · ${esc(x.title)}</span>
         <span class="cubuk"><i style="width:${
           // Alt sınır 4%: genişlemede oran ~0 olduğu için çubuk görünmez oluyor
           // ve "burada bir şey yok" diye okunuyordu — etiket "buraya bak" derken.
@@ -547,14 +558,17 @@ function defterHtml(j) {
   // okuyamamak bir olgu, alarm değil. Defter kendi ölçümüne de kefil olmaz:
   // kanıt önde, karar kullanıcının.
   const kar = m.quarantined || [];
+  // Belgede birim sayfa ("s. 4"), videoda zaman ("14:22"); ikisi de q.ts.
+  const konum = (q) => belge ? `s. ${q.page ?? Math.round(q.ts)}` : fmtTs(q.ts);
+  const neyi = belge ? "sayfayı" : "ekranı";
   const karantinaHtml = kar.length ? kar.map((q) => `
     <div class="karantina">
-      <a class="kanit" href="${esc(duzelt(q.src, j.id))}" target="_blank" rel="noopener">
-        <img src="${esc(duzelt(q.src, j.id))}" alt="okunamayan ekran ${esc(fmtTs(q.ts))}">
-      </a>
+      ${q.src ? `<a class="kanit" href="${esc(duzelt(q.src, j.id))}" target="_blank" rel="noopener">
+        <img src="${esc(duzelt(q.src, j.id))}" alt="okunamayan ${neyi} ${esc(konum(q))}">
+      </a>` : ""}
       <div style="flex:1;min-width:0">
-        <div class="etiket">karantina · ${esc(fmtTs(q.ts))}</div>
-        <p class="ipucu" style="margin-top:5px">Bu ekranı okuyamadım. Metnini
+        <div class="etiket">karantina · ${esc(konum(q))}</div>
+        <p class="ipucu" style="margin-top:5px">Bu ${neyi} okuyamadım. Metnini
         özete katmadım — işte görüntüsü, sen bak.</p>
         <div class="olcumler">
           <span>güven medyanı <b>${q.conf}</b></span>
@@ -700,7 +714,7 @@ $("#dosya").onchange = () => {
 
 function sifirlaDosya() {
   $("#dosya").value = "";
-  $("#yukleMetin").textContent = "Bir video veya ses dosyası seç";
+  $("#yukleMetin").textContent = "Bir video, ses dosyası ya da PDF seç";
   $("#yukleAlan").classList.remove("dolu");
 }
 

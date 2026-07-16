@@ -84,3 +84,57 @@ def render(
         footer += f" · {digest.frames_used} slayt OCR ile okundu"
     out += ["---", "", f"<sub>{footer}</sub>", ""]
     return "\n".join(out)
+
+
+def _sayfa(n: float) -> str:
+    """Sayfa numarası 'zaman' olarak kodlanmıştı (document.py); geri çeviriyoruz."""
+    return f"s. {int(n)}"
+
+
+def render_document(digest: Digest, title: str, pages, assets_rel: str) -> str:
+    """Belge özeti: video render'ının aynısı ama referanslar 'zaman' değil 'sayfa'.
+
+    Karantina sayfaları özetten sonra ayrı bölümde, kanıtıyla: defter
+    okuyamadığını gizlemez, sayfayı masaya koyar.
+    """
+    out: list[str] = [f"# {title}", ""]
+    okunan = sum(1 for p in pages if not p.quarantined and p.text.strip())
+    out += [f"{len(pages)} sayfa · {okunan} okundu", ""]
+
+    out += ["## TL;DR", ""]
+    out += [f"- {item}" for item in digest.tldr]
+    out += ["", "## Detaylı Özet", ""]
+
+    for section in digest.sections:
+        out.append(f"### {_sayfa(section.section.start)} · {section.section.title}")
+        out += ["", section.summary, ""]
+        for ts, text in section.points:
+            out.append(f"- `{_sayfa(ts)}` {text}")
+        out.append("")
+
+    if digest.glossary:
+        out += ["## Terimler", ""]
+        out += [f"- **{term}** — {definition}" for term, definition in digest.glossary]
+        out.append("")
+
+    karantina = [p for p in pages if p.quarantined]
+    if karantina:
+        out += ["## Okuyamadığım sayfalar", ""]
+        out += ["Bu sayfaların metnini özete katmadım. Kanıtı önünde — sen bak.", ""]
+        for p in karantina:
+            if p.img_rel:
+                out.append(f"![Sayfa {p.number}]({p.img_rel})")
+            out.append(
+                f"<sub>`{_sayfa(p.number)}` okunamadı "
+                f"(güven medyanı {p.conf}, {len(ACILAR)} açı denendi).</sub>"
+            )
+            out.append("")
+
+    footer = (
+        f"Otomatik üretildi · {len(pages)} sayfa · {okunan} okundu · "
+        f"{len(digest.sections)} bölüm · eleştirmen {digest.added_by_critic} madde ekledi"
+    )
+    if karantina:
+        footer += f" · {len(karantina)} sayfa karantinada"
+    out += ["---", "", f"<sub>{footer}</sub>", ""]
+    return "\n".join(out)
