@@ -499,6 +499,14 @@ function defterHtml(j) {
        yalnızca ekranda vardı — konuşmacı söylemedi, ses kaydından çıkmazdı.</div>`
     : "";
 
+  // §3 kuplajının karşılığı: ses sustuğunda ekrana daha çok baktık. Bunlar
+  // transkriptin kapsamadığı — ve Whisper'ın uydurmaya en yatkın olduğu —
+  // pencerelerden gelen ekranlar.
+  const sessiz = m.frames_from_silence
+    ? `<div class="kurtarmaNot"><b>${m.frames_from_silence}</b> ekran, sesin
+       sustuğu anlardan okundu — konuşma durduğunda ekrana daha sık baktım.</div>`
+    : "";
+
   // Sıkışma: defterin ÖLÇEMEDİĞİ boşluk için ölçülebilir vekil. Bir iddia değil,
   // davet — o yüzden dil "kaybolmuş olabilir", ton okr, alarm yok. Ölçülemeyen
   // bölüm (çok kısa) arka uçta listeye hiç girmiyor; burada "?" uydurmuyoruz.
@@ -565,6 +573,7 @@ function defterHtml(j) {
     </button>
     <div class="defterIc" id="defterIc" style="display:none">
       ${ekran}
+      ${sessiz}
       ${karantinaHtml}
       ${sikismaHtml}
       <div class="defterNot">Defter, ölçtüğü boşlukları bilir; ölçemediğini bilmez.</div>

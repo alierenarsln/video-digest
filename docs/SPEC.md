@@ -134,16 +134,16 @@ Yük taşıyan garanti, test edildi: **karantina metni `as_prompt_text`'ten geç
 
 ## 3. Video hattı — sessizlik kuplajı
 
-**Bugün iki alt-sistem bağımsız koşuyor.** `silencedetect` çıktısı var ama yalnız nota gidiyor; kare örnekleme sabit fps; phash dedup ediyor. Bağlanmamış tek şey **sinyalin kendisi**.
+> **DÜZELTME.** Bu bölümün ilk hâlinde *"`silencedetect` çıktısı var ama yalnız nota gidiyor"* ve *"bedava — çıktı zaten üretiliyor"* yazıyordu. **İkisi de yanlıştı.** `silencedetect` bu depoda hiç yoktu (`grep` ile doğrulandı); doğrulanmadan, makul göründüğü için yazılmıştı. Arıza sınıfının yedinci örneği ve spec'in kendi içinde (§1.3). Kuplaj bedava değil: **ek bir ffmpeg geçişi** gerektirir — ucuz (yalnız ses çözülür, kare yazılmaz) ama sıfır değil.
+
+**Gerekçe (§1.2):** sessizlik hem Whisper'ın belgelenmiş halüsinasyon tetikleyicisi (`nullc`: AGC bozulup ses kısılınca "whole legal arguments" uydurdu), hem hocanın slaytı okumaya bıraktığı an. **Aynı saniye.** M8 bunu ölçtü: sessiz videoda transkript 3 kelime uydurma, özetin 350 kelimesinin tamamı ekrandan.
 
 **Mimari emir (korelasyon değil):** ses sustuğunda o pencerede
-- kare örnekleme sıklığı **yükselir**,
-- OCR önceliği **yükselir**,
-- ASR çıktısı o pencerede **düşük güvenli** işaretlenir.
+- kare örnekleme sıklığı **yükselir** — slayt tam orada değişiyor olabilir, seyrek ızgara kaçırır,
+- seyreltmede (`MAX_FRAMES`) o kareler **korunur** — sesin kapsamadığı tek yer orası,
+- *(yapılmadı)* ASR çıktısı o pencerede düşük güvenli işaretlenir.
 
-Tek sinyal, çift iş: **sesin yalanını karantinaya alır VE kamerayı gerçeğe çevirir.** Bedava — çıktı zaten üretiliyor.
-
-Gerekçe (§1.2): sessizlik hem Whisper'ın belgelenmiş halüsinasyon tetikleyicisi, hem hocanın slaytı okumaya bıraktığı an. Aynı saniye.
+Tek sinyal, çift iş: **sesin yalanını karantinaya alır VE kamerayı gerçeğe çevirir.**
 
 ---
 

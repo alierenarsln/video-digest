@@ -19,6 +19,7 @@ phash'e bırakıldı.
 """
 
 import asyncio
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,6 +80,13 @@ OCR_CONF_ESIK = 60.0
 # güvenli karelerde ödeniyor.
 ACILAR = (0, 90, 180, 270)
 
+# Sessizlik kuplajı (§3). silencedetect eşikleri: -30dB, en az 2 sn. 2 sn,
+# konuşma arasındaki nefesi değil, konuşmacının slaytı okumaya bıraktığı
+# duraklamayı yakalar. SILENCE_DENSITY: o pencerede kaç kat sık örneklenir.
+SILENCE_NOISE = "-30dB"
+SILENCE_MIN = 2.0
+SILENCE_DENSITY = 3
+
 
 @dataclass
 class Frame:
@@ -93,17 +101,74 @@ class Frame:
     # ürünün tam olarak suçladığı şey. Kare yine de saklanır: defter "okuyamadım"
     # derken sayfanın görüntüsünü masaya koymalı, kendi ölçümüne de kefil olmadan.
     quarantined: bool = False
+    # Bu kare, sesin sustuğu bir pencereden mi geldi? (§3) Öyleyse transkriptin
+    # kapsamadığı — ve Whisper'ın uydurmaya en yatkın olduğu — andan geliyor.
+    in_silence: bool = False
 
 
-async def _sample(video: Path, raw_dir: Path) -> list[tuple[float, Path]]:
-    """Videoyu tek geçişte tarayıp SAMPLE_INTERVAL saniyede bir kare yazar.
+async def _silences(video: Path) -> list[tuple[float, float]]:
+    """Sesin sustuğu pencereler.
 
-    Tek sıralı geçiş, kare başına video içinde atlamaktan çok daha hızlı.
+    Neden: sessizlik hem Whisper'ın halüsinasyon tetikleyicisi (boş sesten
+    "Thank you." ya da uydurma cümleler üretir), hem konuşmacının slaytı
+    okumaya bıraktığı an. AYNI saniye. Yani ses en çok yalan söylediği anda
+    ekran en çok öğretiyor — o pencerede kameraya daha çok bakmalıyız.
+
+    Bu geçiş bedava değil ama ucuz: -vn ile video hiç çözülmüyor, kare
+    yazılmıyor; yalnız ses taranıyor. Düşerse kuplaj kapanır, boru hattı
+    çalışmaya devam eder — sessizlik bir iyileştirme, zorunluluk değil.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-nostdin", "-i", str(video), "-vn",
+        "-af", f"silencedetect=noise={SILENCE_NOISE}:d={SILENCE_MIN}",
+        "-f", "null", "-",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        print("[frames] silencedetect basarisiz, kuplaj kapali", flush=True)
+        return []
+
+    pencereler: list[tuple[float, float]] = []
+    baslangic: float | None = None
+    for satir in stderr.decode("utf-8", "replace").splitlines():
+        bas = re.search(r"silence_start:\s*(-?[\d.]+)", satir)
+        if bas:
+            baslangic = max(0.0, float(bas.group(1)))
+            continue
+        son = re.search(r"silence_end:\s*([\d.]+)", satir)
+        if son and baslangic is not None:
+            pencereler.append((baslangic, float(son.group(1))))
+            baslangic = None
+    # Video sessizlikle bitiyorsa silence_end hiç gelmez; o pencere kaybolurdu.
+    if baslangic is not None:
+        pencereler.append((baslangic, float("inf")))
+    return pencereler
+
+
+def _sessizde(ts: float, pencereler: list[tuple[float, float]]) -> bool:
+    return any(bas <= ts <= son for bas, son in pencereler)
+
+
+async def _sample(
+    video: Path, raw_dir: Path, silences: list[tuple[float, float]]
+) -> list[tuple[float, Path]]:
+    """Tek geçişte kare yazar: her yerde SAMPLE_INTERVAL, SESSİZLİKTE daha sık.
+
+    Tek sıralı geçiş, kare başına video içinde atlamaktan çok daha hızlı; bu
+    yüzden sık ızgarada örnekleyip sessiz olmayan fazlalıkları ATIYORUZ —
+    ikinci bir ffmpeg geçişi videoyu bir kez daha çözerdi.
+
+    Sessizlikte sıklaştırmanın maliyeti düşük: aynı slayt kalmışsa fazladan
+    kareler zaten phash dedup'ında düşer. Kazanç, slayt tam o pencerede
+    DEĞİŞTİYSE ortaya çıkar — seyrek ızgara onu kaçırırdı.
     """
     raw_dir.mkdir(parents=True, exist_ok=True)
+    sik = SAMPLE_INTERVAL / SILENCE_DENSITY if silences else SAMPLE_INTERVAL
+
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-nostdin", "-y", "-i", str(video),
-        "-vf", f"fps=1/{SAMPLE_INTERVAL}", "-q:v", "3",
+        "-vf", f"fps=1/{sik}", "-q:v", "3",
         str(raw_dir / "s_%05d.jpg"),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
@@ -113,9 +178,28 @@ async def _sample(video: Path, raw_dir: Path) -> list[tuple[float, Path]]:
             f"ffmpeg kare örnekleme başarısız:\n{stderr.decode('utf-8', 'replace')[-1500:]}"
         )
 
-    files = sorted(raw_dir.glob("s_*.jpg"))
     # fps filtresi ilk kareyi t=0'da, sonrakileri interval aralıklarla verir.
-    return [(i * SAMPLE_INTERVAL, p) for i, p in enumerate(files)]
+    tumu = [(i * sik, p) for i, p in enumerate(sorted(raw_dir.glob("s_*.jpg")))]
+    if not silences:
+        return tumu
+
+    tutulan: list[tuple[float, Path]] = []
+    for ts, path in tumu:
+        # Ya taban ızgarada ya sessizlik penceresinde; gerisi silinir.
+        izgarada = abs(ts % SAMPLE_INTERVAL) < sik / 2 or (
+            SAMPLE_INTERVAL - abs(ts % SAMPLE_INTERVAL) < sik / 2
+        )
+        if izgarada or _sessizde(ts, silences):
+            tutulan.append((ts, path))
+        else:
+            path.unlink(missing_ok=True)
+
+    print(
+        f"[frames] {len(silences)} sessiz pencere -> sessizlikte {SILENCE_DENSITY}x "
+        f"siklastirildi ({len(tumu)} ornek -> {len(tutulan)} tutuldu)",
+        flush=True,
+    )
+    return tutulan
 
 
 def _dedupe(samples: list[tuple[float, Path]]) -> list[tuple[float, Path]]:
@@ -188,8 +272,13 @@ def _en_iyi_aci(img: Image.Image) -> tuple[str, float | None, int]:
     return en_iyi
 
 
-def _ocr(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
+def _ocr(
+    samples: list[tuple[float, Path]],
+    out_dir: Path,
+    silences: list[tuple[float, float]] | None = None,
+) -> list[Frame]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    silences = silences or []
     frames: list[Frame] = []
 
     for index, (ts, src) in enumerate(samples):
@@ -235,6 +324,7 @@ def _ocr(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
                 conf=round(conf, 1),
                 rotation=rotation,
                 quarantined=karantina,
+                in_silence=_sessizde(ts, silences),
             )
         )
     return frames
@@ -242,12 +332,28 @@ def _ocr(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
 
 def _cap(frames: list[Frame]) -> list[Frame]:
     """Çok fazla slayt varsa eşit aralıklarla seyrelt — ilk N'i almak videonun
-    sonunu tamamen kör bırakırdı."""
+    sonunu tamamen kör bırakırdı.
+
+    Sessizlik kuplajı (§3): eşit aralık ızgarası sessiz bir kareye denk
+    gelmiyorsa, komşusu yerine SESSİZ olanı al. Sesin sustuğu pencere,
+    transkriptin kapsamadığı tek yer — seyreltmede en son atılacak şey o.
+    """
     if len(frames) <= MAX_FRAMES:
         return frames
 
     step = len(frames) / MAX_FRAMES
-    kept = [frames[int(i * step)] for i in range(MAX_FRAMES)]
+    kept: list[Frame] = []
+    secilen: set[int] = set()
+    for i in range(MAX_FRAMES):
+        idx = int(i * step)
+        # Bu adımın penceresi içinde sessiz bir kare varsa onu tercih et.
+        pencere = range(idx, min(len(frames), int((i + 1) * step)))
+        sessiz = [k for k in pencere if frames[k].in_silence and k not in secilen]
+        secim = sessiz[0] if sessiz else idx
+        if secim in secilen:
+            continue
+        secilen.add(secim)
+        kept.append(frames[secim])
 
     keep_paths = {f.path for f in kept}
     for frame in frames:
@@ -262,14 +368,19 @@ def _cap(frames: list[Frame]) -> list[Frame]:
     return kept
 
 
-def _process_sync(samples: list[tuple[float, Path]], out_dir: Path) -> list[Frame]:
+def _process_sync(
+    samples: list[tuple[float, Path]],
+    out_dir: Path,
+    silences: list[tuple[float, float]],
+) -> list[Frame]:
     unique = _dedupe(samples)
-    frames = _cap(_ocr(unique, out_dir))
+    frames = _cap(_ocr(unique, out_dir, silences))
     # Log'da ASCII kalın: Windows konsolu cp1254 ve "→" gibi karakterlerde
     # UnicodeEncodeError atıp worker'ı düşürüyor.
     print(
         f"[frames] {len(samples)} ornek -> {len(unique)} benzersiz ekran -> "
-        f"{len(frames)} slayt (metinsizler elendi)",
+        f"{len(frames)} slayt ({sum(1 for f in frames if f.in_silence)} sessizlikten, "
+        f"{sum(1 for f in frames if f.quarantined)} karantinada)",
         flush=True,
     )
     return frames
@@ -278,11 +389,15 @@ def _process_sync(samples: list[tuple[float, Path]], out_dir: Path) -> list[Fram
 async def extract(video: Path, duration: float, out_dir: Path) -> list[Frame]:
     raw_dir = out_dir / "_raw"
     try:
-        samples = await _sample(video, raw_dir)
+        # Sessizlik ÖNCE ölçülür: örnekleme sıklığı ona göre ayarlanacak (§3).
+        # Düşerse boş liste döner ve kuplaj sessizce kapanır — sessizlik bir
+        # iyileştirme, boru hattının koşulu değil.
+        silences = await _silences(video)
+        samples = await _sample(video, raw_dir, silences)
         if not samples:
             return []
         # phash + OCR bloklayıcı ve CPU-bağlı — event loop'u tıkamasın.
-        return await asyncio.to_thread(_process_sync, samples, out_dir)
+        return await asyncio.to_thread(_process_sync, samples, out_dir, silences)
     finally:
         shutil.rmtree(raw_dir, ignore_errors=True)
 

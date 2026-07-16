@@ -151,6 +151,12 @@ async def _process(job_id: str) -> None:
             # frames_used = OKUNAN ekran. Karantinadakiler buraya girmez:
             # "31 slayt okundu" derken okuyamadığımızı saymak yalan olurdu.
             "frames_used": sum(1 for f in shots if not f.quarantined),
+            # Sessizlik kuplajının (§3) ölçülebilir karşılığı: bu ekranlar,
+            # sesin sustuğu — yani Whisper'ın uydurmaya en yatkın olduğu —
+            # pencerelerden geldi. Transkriptin kapsamadığı tek yer.
+            "frames_from_silence": sum(
+                1 for f in shots if f.in_silence and not f.quarantined
+            ),
             # Okuyamadıklarımız kaybolmuyor; defter kanıtıyla gösteriyor.
             "quarantined": [
                 {
