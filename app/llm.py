@@ -250,20 +250,45 @@ async def _openrouter_json(
             choice = data["choices"][0]
             if choice.get("finish_reason") == "length":
                 raise LLMError("Yanıt kesildi — max_tokens yetmedi.")
-            return _loads(choice["message"]["content"])
+
+            # Ücretsiz model çağrıların ~1/3'ünde BOŞ ya da yarım JSON döndürüyor
+            # (ölçüldü). Segment bunu yakalayıp fallback yapıyordu ama summarize
+            # ölümcül düşüyordu — tek flake bütün işi çöpe atıyordu. Boş/bozuk
+            # çıktı geçici sayılıp retry ediliyor; ~1/3 flake'te 5 denemenin
+            # hepsinin boş gelmesi ~%0.4. Her retry 50/gün bütçesinden yer.
+            content = (choice["message"].get("content") or "").strip()
+            if content:
+                try:
+                    return _loads(content)
+                except LLMError:
+                    last = f"bozuk JSON: {content[:120]}"
+            else:
+                last = "boş içerik (ücretsiz-model flake)"
+            await asyncio.sleep(1)
+            continue
 
     raise LLMError(
-        f"OpenRouter kotası doldu ({OPENROUTER_MODEL}). Ücretsiz katman günde 50 "
-        f"istek; bir video ~12-15 istek yiyor. Groq'a dönmek için LLM_PROVIDER=groq. "
-        f"Ayrıntı: {last}"
+        f"OpenRouter {OPENROUTER_MODEL}: {last or 'kota/flake'}. Ücretsiz katman "
+        f"günde 50 istek ve JSON'da ara sıra boş dönüyor; güvenilir çıktı için "
+        f"Groq (LLM_PROVIDER=groq)."
     )
 
 
 def _loads(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
-    except json.JSONDecodeError as exc:  # yapısal çıktı ile beklenmez
-        raise LLMError(f"Model geçerli JSON döndürmedi: {exc}") from exc
+    except json.JSONDecodeError:
+        pass
+    # Ücretsiz modeller (gemma) json_schema'ya rağmen çıktıyı markdown ``` ```
+    # blokuna sarabiliyor ya da önüne açıklama koyabiliyor. Yapısal çıktının
+    # bozulması geçici bir flake — ilk '{' ile son '}' arasını kurtarmayı dene.
+    ilk, son = text.find("{"), text.rfind("}")
+    if ilk != -1 and son > ilk:
+        try:
+            return json.loads(text[ilk : son + 1])
+        except json.JSONDecodeError:
+            pass
+    raise LLMError(f"Model geçerli JSON döndürmedi: {text[:80]!r}")
 
 
 async def complete_json(
