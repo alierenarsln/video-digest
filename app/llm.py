@@ -21,6 +21,10 @@ import httpx
 from .config import (
     ANTHROPIC_API_KEY,
     PROVIDER_WINDOWS,
+    GEMINI_API_KEY,
+    GEMINI_BASE_URL,
+    GEMINI_MAX_OUTPUT,
+    GEMINI_MODEL,
     GROQ_API_KEY,
     GROQ_BASE_URL,
     GROQ_CONCURRENCY,
@@ -274,6 +278,86 @@ async def _openrouter_json(
     )
 
 
+def _gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """JSON Schema -> Gemini responseSchema (OpenAPI 3 alt kümesi).
+
+    Gemini `additionalProperties`, `$schema`, `strict` gibi anahtarları
+    reddediyor; yalnızca type/properties/items/enum/required/description
+    tutulur. Özyinelemeli temizlik.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    izinli = {"type", "properties", "items", "enum", "required", "description", "nullable"}
+    out: dict[str, Any] = {}
+    for k, v in schema.items():
+        if k not in izinli:
+            continue
+        if k == "properties" and isinstance(v, dict):
+            out[k] = {ad: _gemini_schema(alt) for ad, alt in v.items()}
+        elif k == "items":
+            out[k] = _gemini_schema(v)
+        else:
+            out[k] = v
+    return out
+
+
+async def _gemini_json(
+    system: str, user: str, schema: dict[str, Any], effort: str, max_tokens: int
+) -> dict[str, Any]:
+    """Google Gemini — native yapısal çıktı (responseSchema).
+
+    Kıyasta bu iş için seçilen: gemma'nın flake'i yok (şema API'de zorlanıyor),
+    Türkçe iyi, 1M bağlam, ucuz. Groq gibi dakikalık token kotası derdi yok.
+    """
+    payload = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": _gemini_schema(schema),
+            "maxOutputTokens": min(max_tokens, GEMINI_MAX_OUTPUT),
+        },
+    }
+    url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent"
+
+    last = ""
+    async with httpx.AsyncClient(timeout=600) as client:
+        for attempt in range(5):
+            resp = await client.post(
+                url, headers={"x-goog-api-key": GEMINI_API_KEY}, json=payload
+            )
+            if resp.status_code == 429:
+                await asyncio.sleep(min(_retry_after(resp, attempt) + 1, 65))
+                last = resp.text[:300]
+                continue
+            if resp.status_code != 200:
+                raise LLMError(f"Gemini {resp.status_code}: {resp.text[:400]}")
+
+            data = resp.json()
+            adaylar = data.get("candidates") or []
+            if not adaylar:
+                # promptFeedback.blockReason gelebilir (güvenlik) — retry çözmez.
+                geri = data.get("promptFeedback", {})
+                raise LLMError(f"Gemini aday döndürmedi: {str(geri)[:200]}")
+            aday = adaylar[0]
+            # maxOutputTokens'a takıldıysa çıktı yarım — retry ile büyümez.
+            if aday.get("finishReason") == "MAX_TOKENS":
+                raise LLMError("Gemini yanıtı kesildi — maxOutputTokens yetmedi.")
+            parts = (aday.get("content") or {}).get("parts") or []
+            metin = "".join(p.get("text", "") for p in parts).strip()
+            if metin:
+                try:
+                    return _loads(metin)
+                except LLMError:
+                    last = f"bozuk JSON: {metin[:120]}"
+            else:
+                last = "boş içerik"
+            await asyncio.sleep(1)
+            continue
+
+    raise LLMError(f"Gemini {GEMINI_MODEL}: {last or 'kota/flake'}.")
+
+
 def _loads(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
@@ -309,4 +393,8 @@ async def complete_json(
         if not OPENROUTER_API_KEY:
             raise LLMError("Sağlayıcı openrouter seçildi ama OPENROUTER_API_KEY boş.")
         return await _openrouter_json(system, user, schema, effort, max_tokens)
+    if aktif == "gemini":
+        if not GEMINI_API_KEY:
+            raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")
+        return await _gemini_json(system, user, schema, effort, max_tokens)
     raise LLMError(f"Bilinmeyen sağlayıcı: {aktif}")

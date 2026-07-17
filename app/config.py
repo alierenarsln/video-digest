@@ -3,7 +3,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# override=True: .env kabuktaki ESKİ env değişkenlerini EZER. Varsayılan (False)
+# bir footgun'du: kabukta eski bir OPENROUTER_API_KEY export'lu kalmışsa .env'e
+# yeni anahtar yazmak sessizce yok sayılıyordu (401 "User not found" kovaladık).
+# Coolify'da .env yok → orada zararsız (env var'lar kullanılır).
+load_dotenv(override=True)
 
 
 def _int(name: str, default: int) -> int:
@@ -28,6 +32,15 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-opus-4-8")
 
+# Gemini: bu iş için ölçülen fiyat/güvenilirlik dengesinin kazananı. Native
+# responseSchema (yapısal JSON) + iyi Türkçe + ucuz. 2.5 Flash varsayılan;
+# Flash-Lite daha da ucuz ama biraz daha zayıf. Anahtar: Google AI Studio.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+# 1M bağlam → OpenRouter gibi büyük pencere; istek/kota derdi Groq kadar değil.
+GEMINI_MAX_OUTPUT = _int("GEMINI_MAX_OUTPUT", 8000)
+
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Ölçüldü — ücretsiz VE katı JSON şeması destekleyenler arasından, TEKRARLI test:
@@ -50,9 +63,10 @@ OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 8000)
 #   openrouter : tencent/hy3 — ücretsiz. Sınır: GÜNDE 50 İSTEK (kredi 0 iken;
 #                $10 kredi alınırsa 1000). 262k bağlam → büyük istek serbest,
 #                ama istek sayısı kıymetli.
-# Boş bırakılırsa: Anthropic anahtarı varsa anthropic, yoksa groq (sınırsız video).
+# Boş bırakılırsa öncelik: Anthropic (en iyi) > Gemini (fiyat/kalite dengesi) >
+# Groq (ücretsiz, sınırsız video). Kullanıcı zaten arayüzden iş başına seçebilir.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "").strip().lower() or (
-    "anthropic" if ANTHROPIC_API_KEY else "groq"
+    "anthropic" if ANTHROPIC_API_KEY else "gemini" if GEMINI_API_KEY else "groq"
 )
 # Groq'ta KATI JSON şeması destekleyen model. Ölçüldü: gpt-oss-120b destekliyor,
 # llama-3.3-70b DESTEKLEMİYOR (HTTP 400). Değiştirirken bunu doğrulayın.
@@ -86,6 +100,9 @@ PROVIDER_WINDOWS = {
     "groq":       {"boundary": 6_000,   "section": 8_000,  "repair": 4_000},
     "openrouter": {"boundary": 120_000, "section": 40_000, "repair": 10_000},
     "anthropic":  {"boundary": 120_000, "section": 40_000, "repair": 40_000},
+    # Gemini 1M bağlam: OpenRouter gibi büyük pencere, ama günlük istek kotası
+    # yok → hem büyük istek hem çok istek serbest.
+    "gemini":     {"boundary": 120_000, "section": 40_000, "repair": 20_000},
 }
 
 
@@ -94,6 +111,7 @@ def provider_available(name: str) -> bool:
         "groq": bool(GROQ_API_KEY),
         "openrouter": bool(OPENROUTER_API_KEY),
         "anthropic": bool(ANTHROPIC_API_KEY),
+        "gemini": bool(GEMINI_API_KEY),
     }.get(name, False)
 
 
@@ -116,6 +134,12 @@ PROVIDER_INFO = {
         "model": SUMMARY_MODEL,
         "artisi": "En iyi eleştirmen geçişi ve bölümleme, 1M bağlam, kota derdi yok.",
         "eksisi": "Ücretli.",
+    },
+    "gemini": {
+        "ad": "Gemini — fiyat/kalite dengesi",
+        "model": GEMINI_MODEL,
+        "artisi": "Native yapısal JSON (flake yok), iyi Türkçe, 1M bağlam, ~$3/ay.",
+        "eksisi": "Ücretli (ama çok ucuz). Google AI Studio anahtarı gerekir.",
     },
 }
 
