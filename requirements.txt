@@ -18,3 +18,9 @@ python-dotenv>=1.0.1
 Pillow>=11.0
 ImageHash>=4.3.1
 pytesseract>=0.3.13
+
+# Belge hattı (PDF): pypdf metin katmanını çıkarır, PyMuPDF (fitz) taranmış
+# sayfayı görüntüye çevirir (OCR'a düşünce). document.py bunları import ediyor;
+# eksikse konteyner "No module named 'fitz'" ile açılışta çöker (canlıda oldu).
+pypdf>=6.0
+PyMuPDF>=1.28
