@@ -176,8 +176,22 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .ozet p, .ozet li { font-family: var(--font-serif); font-size: 16px; line-height: 1.62;
   color: var(--text-body); max-width: 66ch; }
 .ozet p { margin: var(--space-3) 0; }
-.ozet ul { margin: var(--space-3) 0; padding-left: 20px; }
+.ozet ul, .ozet ol { margin: var(--space-3) 0; padding-left: 22px; }
+.ozet ol li { font-family: var(--font-serif); }
 .ozet li { margin: 5px 0; }
+/* Derinleşme prompt'u bloğu — kopyala butonuyla, referans hissi (mono, sunken). */
+.kodblok { position: relative; margin: var(--space-4) 0; }
+.kodblok pre { font-family: var(--font-mono); font-size: 13px; line-height: 1.5;
+  color: var(--text-body); background: var(--surface-sunken);
+  border: 1px solid var(--border-hair); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-1); padding: 14px 16px; margin: 0;
+  white-space: pre-wrap; word-break: break-word; max-width: 66ch; }
+.kodblok .kopyala { position: absolute; top: 8px; right: 8px;
+  font: inherit; font-family: var(--font-mono); font-size: var(--fs-micro);
+  padding: 4px 9px; cursor: pointer; color: var(--text-on-accent);
+  background: var(--accent); border: 0; border-radius: var(--radius-1);
+  transition: background var(--dur-1) var(--ease-standard); }
+.kodblok .kopyala:hover { background: var(--accent-strong); }
 .ozet code { background: var(--surface-sunken); border: 1px solid var(--border-hair);
   border-radius: var(--radius-1); padding: 1px 5px; }
 .ozet hr { border: 0; border-top: 1px solid var(--border-hair); margin: var(--space-6) 0; }
@@ -349,10 +363,25 @@ function md(src, jobId) {
       .replace(/&lt;sub&gt;/g, "<sub>").replace(/&lt;\/sub&gt;/g, "</sub>");
 
   const out = [];
-  let liste = false;
-  const kapat = () => { if (liste) { out.push("</ul>"); liste = false; } };
+  let liste = false, ol = false, kod = false, kodSatir = [];
+  const kapat = () => {
+    if (liste) { out.push("</ul>"); liste = false; }
+    if (ol) { out.push("</ol>"); ol = false; }
+  };
+  // Fenced kod bloğu = derinleşme prompt'u. Kopyala butonuyla: kullanıcı bunu
+  // ChatGPT/Claude'a olduğu gibi yapıştırır.
+  const kodBlok = (t) => `<div class="kodblok">` +
+    `<button class="kopyala" type="button" data-kod="${esc(t)}">kopyala</button>` +
+    `<pre>${esc(t)}</pre></div>`;
 
   for (const ham of src.split("\n")) {
+    if (ham.trim() === "```") {
+      if (kod) { out.push(kodBlok(kodSatir.join("\n"))); kod = false; kodSatir = []; }
+      else { kapat(); kod = true; kodSatir = []; }
+      continue;
+    }
+    if (kod) { kodSatir.push(ham); continue; }  // blok içi ham (trim/işleme yok)
+
     const s = ham.trim();
     if (!s) { kapat(); continue; }
     if (s === "---") { kapat(); out.push("<hr>"); continue; }
@@ -360,7 +389,12 @@ function md(src, jobId) {
     if ((m = s.match(/^(#{1,3})\s+(.*)$/))) {
       kapat();
       out.push(`<h${m[1].length}>${satirIci(m[2])}</h${m[1].length}>`);
+    } else if ((m = s.match(/^(\d+)\.\s+(.*)$/))) {
+      if (liste) { out.push("</ul>"); liste = false; }
+      if (!ol) { out.push("<ol>"); ol = true; }
+      out.push(`<li>${satirIci(m[2])}</li>`);
     } else if ((m = s.match(/^-\s+(.*)$/))) {
+      if (ol) { out.push("</ol>"); ol = false; }
       if (!liste) { out.push("<ul>"); liste = true; }
       out.push(`<li>${satirIci(m[1])}</li>`);
     } else {
@@ -368,8 +402,22 @@ function md(src, jobId) {
       out.push(`<p>${satirIci(s)}</p>`);
     }
   }
+  if (kod) out.push(kodBlok(kodSatir.join("\n")));  // kapanmamış blok güvenliği
   kapat();
   return out.join("\n");
+}
+
+// Kopyala butonlarını bağla (#ozet her çizildiğinde yeniden).
+function kopyaButonlari(kok) {
+  kok.querySelectorAll(".kopyala").forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(b.dataset.kod);
+        const eski = b.textContent; b.textContent = "kopyalandı ✓";
+        setTimeout(() => { b.textContent = eski; }, 1500);
+      } catch { b.textContent = "kopyalanamadı"; }
+    };
+  });
 }
 
 // Markdown görselleri göreli yolla (<job>_frames/x.jpg) referans veriyor;
@@ -679,6 +727,7 @@ async function ciz() {
 
   $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
   enstrumanla($("#ozet"));
+  kopyaButonlari($("#ozet"));
   return true;
 }
 

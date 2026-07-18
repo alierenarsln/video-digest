@@ -8,6 +8,38 @@ from .summarize import Digest
 from .transcribe import fmt_ts
 
 
+_TUR_BASLIK = {
+    "tutorial": "Adım adım uygula",
+    "kurs": "Kendini test et",
+    "gelisim": "Bu hafta yap",
+}
+
+
+def _learning_md(digest: Digest) -> list[str]:
+    """Öğrenme çıktısı: adım/eylem/quiz + derinleşme prompt'u. Boşsa hiç yazma."""
+    out: list[str] = []
+    if digest.steps:
+        out += ["## Adım adım uygula", ""]
+        out += [f"{i}. {s}" for i, s in enumerate(digest.steps, 1)]
+        out.append("")
+    if digest.actions:
+        out += ["## Bu hafta yap", ""]
+        out += [f"- {a}" for a in digest.actions]
+        out.append("")
+    if digest.quiz:
+        out += ["## Kendini test et", ""]
+        for q in digest.quiz:
+            out.append(f"- **{q['soru']}**")
+            out.append(f"  <sub>Cevap: {q['cevap']}</sub>")
+        out.append("")
+    if digest.deepen_prompt:
+        out += ["## Daha derine — araştırma prompt'u", ""]
+        out += ["Bunu ChatGPT ya da Claude'a olduğu gibi yapıştır:", ""]
+        # Fenced blok: arayüz kopyala butonu ekliyor, düz metinde de seçilebilir.
+        out += ["```", digest.deepen_prompt, "```", ""]
+    return out
+
+
 def _link(url: str | None, seconds: float) -> str:
     label = fmt_ts(seconds)
     if not url:
@@ -76,6 +108,8 @@ def render(
         out += [f"- **{term}** — {definition}" for term, definition in digest.glossary]
         out.append("")
 
+    out += _learning_md(digest)
+
     footer = (
         f"Otomatik üretildi · {len(digest.sections)} bölüm · "
         f"eleştirmen geçişi {digest.added_by_critic} eksik madde ekledi"
@@ -116,6 +150,8 @@ def render_document(digest: Digest, title: str, pages, assets_rel: str) -> str:
         out += ["## Terimler", ""]
         out += [f"- **{term}** — {definition}" for term, definition in digest.glossary]
         out.append("")
+
+    out += _learning_md(digest)
 
     karantina = [p for p in pages if p.quarantined]
     if karantina:

@@ -102,6 +102,66 @@ bunları okusa videonun ne dediğini bilmeli.
 
 _SYNTH_SYSTEM += language_rule()
 
+
+# --- Öğrenme sentezi ---
+# Özet "ne dedi"yi verir; öğrenme sentezi "şimdi ne YAPACAĞIM"ı verir. İçeriği
+# türüne göre şekillendirir (tutorial→adım, gelişim→eylem, kurs→öz-test) ve
+# başka bir yapay zekâya yapıştırılabilecek DERİNLEŞME prompt'u üretir.
+LEARNING_TYPES = ("tutorial", "kurs", "gelisim", "genel")
+
+_LEARNING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "enum": list(LEARNING_TYPES)},
+        "steps": {"type": "array", "items": {"type": "string"}},
+        "actions": {"type": "array", "items": {"type": "string"}},
+        "quiz": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "soru": {"type": "string"},
+                    "cevap": {"type": "string"},
+                },
+                "required": ["soru", "cevap"],
+                "additionalProperties": False,
+            },
+        },
+        "deepen_prompt": {"type": "string"},
+    },
+    "required": ["type", "steps", "actions", "quiz", "deepen_prompt"],
+    "additionalProperties": False,
+}
+
+_LEARNING_SYSTEM = """Sana bir videonun bölüm notları veriliyor. Amacın: izleyici \
+videoyu izledikten SONRA ne yapacağını bilsin — daha derin öğrensin, uygulasın, \
+kendini test etsin. Şunları üret:
+
+1. type: İçeriğin türünü sınıflandır:
+   - "tutorial": bir şeyi nasıl yapacağını adım adım gösteren (kod, tarif, kurulum...)
+   - "kurs": ders/anlatım/kavram öğreten (teori, kavram, konu anlatımı)
+   - "gelisim": kişisel gelişim/motivasyon/alışkanlık/tavsiye
+   - "genel": yukarıdakilerin hiçbiri (haber, eğlence, vlog...)
+
+2. steps: SADECE tutorial ise — videoda gösterilen prosedürü sıralı, uygulanabilir \
+adımlara böl (her adım tek bir eylem; komut/araç/değer varsa dahil et; ekranda \
+gösterilenler burada kritik). Tutorial değilse BOŞ liste.
+
+3. actions: SADECE gelisim ise — soyut fikri "bu hafta yap" tipi 3-5 somut eyleme \
+çevir ("daha disiplinli ol" DEĞİL, "her sabah 10 dk planla" gibi). Gelisim değilse BOŞ.
+
+4. quiz: kurs/tutorial ise — öğreneni test eden 3-5 soru + kısa cevap. Ezber değil \
+kavrama ölçen sorular. genel/gelisim ise BOŞ liste.
+
+5. deepen_prompt: Videoda geçen KONULARI adıyla anan, başka bir yapay zekâya \
+(ChatGPT/Claude) OLDUĞU GİBİ yapıştırılabilecek, kendi kendine yeten bir prompt. \
+Amaç: izleyici bu prompt'u yapıştırıp konuyu araştırsın, örneklerle pekiştirsin, \
+kendini sınasın. Prompt şunları içermeli: videonun ana konuları (adıyla), \
+"bana şunları öğret / örneklerle açıkla / beni sorularla test et / sık yapılan \
+hataları göster" gibi somut istekler. Genel kalma — video ÖZELİNDE yaz."""
+
+_LEARNING_SYSTEM += language_rule()
+
 # Defter "6 madde geri eklendi" diyemez: sayı tek başına anlamsız, kullanıcıya
 # NEYİN riskte olduğunu söylemez. "3 sayı, 2 tanım, 1 uyarı" söyler. Tür listesi
 # uydurulmadı — eleştirmenin zaten aradığı kategorilerin ta kendisi (bkz.
@@ -217,6 +277,12 @@ class Digest:
     # Konuşmacının hiç söylemediği, YALNIZCA ekranda olan ve bu yüzden kaçmış
     # olacak bilgi sayısı. Ürünün tek farkının ölçülebilir hâli.
     critic_from_screen: int = 0
+    # --- Öğrenme sentezi: "ne dedi" değil "şimdi ne YAPACAĞIM". ---
+    learning_type: str = "genel"       # tutorial | kurs | gelisim | genel
+    steps: list[str] = field(default_factory=list)         # tutorial: sıralı adım
+    actions: list[str] = field(default_factory=list)       # gelisim: eylem maddesi
+    quiz: list[dict] = field(default_factory=list)         # kurs/tutorial: öz-test
+    deepen_prompt: str = ""            # araştır/test/derinleş — kopyalanabilir prompt
 
 
 async def _summarize_section(
@@ -312,6 +378,38 @@ async def _synthesize(summaries: list[SectionSummary]) -> dict:
         g for r in aralar for g in (r.get("glossary") or [])
     ]
     return final
+
+
+async def _learning_synthesis(summaries: list[SectionSummary]) -> dict:
+    """Öğrenme çıktısı: tür + adım/eylem/quiz + derinleşme prompt'u.
+
+    Tek ek çağrı; bitmiş bölüm özetlerini okur (sentez gibi, maddeleri değil →
+    kotaya sığar). Eleştirmen bir iyileştirme olduğu gibi bu da: düşerse özet
+    yine üretilir, öğrenme bloğu boş kalır.
+    """
+    girdi = "\n\n".join(_synth_blocks(summaries))
+    # Uzun videoda özetler bile büyük olabilir; güvenli tarafta kal.
+    girdi = girdi[: windows()["section"]]
+    try:
+        r = await complete_json(
+            system=_LEARNING_SYSTEM, user=girdi, schema=_LEARNING_SCHEMA,
+            effort="high", max_tokens=3000,
+        )
+    except Exception as exc:
+        print(f"[learning] atlandi: {exc}", flush=True)
+        return {}
+    tur = r.get("type", "")
+    return {
+        "type": tur if tur in LEARNING_TYPES else "genel",
+        "steps": [s.strip() for s in r.get("steps", []) if s.strip()],
+        "actions": [a.strip() for a in r.get("actions", []) if a.strip()],
+        "quiz": [
+            {"soru": q.get("soru", "").strip(), "cevap": q.get("cevap", "").strip()}
+            for q in r.get("quiz", [])
+            if q.get("soru", "").strip()
+        ],
+        "deepen_prompt": (r.get("deepen_prompt") or "").strip(),
+    }
 
 
 async def _critic_one(s: SectionSummary) -> int:
@@ -456,6 +554,8 @@ async def summarize(
     # Sentez yalnız bölüm özetlerini görür (maddeleri değil) ve gerekirse parti
     # parti gider — uzun/yoğun videoda bile Groq kotasına sığar.
     synth = await _synthesize(summaries)
+    # Öğrenme çıktısı: tür + adım/eylem/quiz + derinleşme prompt'u (ek çağrı).
+    ogrenme = await _learning_synthesis(summaries)
 
     turler: dict[str, int] = {}
     ekrandan = 0
@@ -489,4 +589,9 @@ async def summarize(
             for s in summaries
             if s.compression is not None
         ],
+        learning_type=ogrenme.get("type", "genel"),
+        steps=ogrenme.get("steps", []),
+        actions=ogrenme.get("actions", []),
+        quiz=ogrenme.get("quiz", []),
+        deepen_prompt=ogrenme.get("deepen_prompt", ""),
     )
