@@ -22,7 +22,10 @@
 .marka {
   font-family: var(--font-serif); font-size: 21px; font-weight: var(--fw-semibold);
   color: var(--text-strong); letter-spacing: var(--track-tight);
+  background: none; border: 0; padding: 0; cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard);
 }
+.marka:hover { color: var(--accent-strong); }
 .marka b { color: var(--accent); font-weight: inherit; }
 .ust .sag { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); }
 .saglik { display: inline-flex; align-items: center; gap: 6px;
@@ -219,7 +222,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
 <body>
 
 <header class="ust">
-  <span class="marka">Tanık<b>.</b></span>
+  <button class="marka" id="anaSayfa" type="button" aria-label="Ana sayfa">Tanık<b>.</b></button>
   <div class="sag">
     <span class="saglik" id="saglik"></span>
     <button class="btn sessiz" id="tema" type="button" aria-label="Tema değiştir">tema</button>
@@ -607,6 +610,17 @@ function defterHtml(j) {
 }
 
 // ── çizim ───────────────────────────────────────────────────────
+// Giriş (yeni kaynak) ekranına dön. "Tanık." markası ana-sayfa tuşu.
+function anaSayfa() {
+  secili = null;
+  clearInterval(zamanlayici);
+  $("#icerik").style.display = "none";
+  $("#giris").style.display = "block";
+  sonListe = null;
+  listele();  // seçili vurguyu kaldırmak için yeniden çiz
+}
+$("#anaSayfa").onclick = anaSayfa;
+
 async function goster(id) {
   secili = id;
   clearInterval(zamanlayici);
@@ -674,12 +688,7 @@ async function silJob(id, ad) {
   const r = await fetch(`/jobs/${id}`, { method: "DELETE" });
   if (!r.ok) { alert("Silinemedi: " + ((await r.json()).detail || r.statusText)); return; }
   const d = await r.json();
-  secili = null;
-  clearInterval(zamanlayici);
-  $("#icerik").style.display = "none";
-  $("#giris").style.display = "block";
-  sonListe = null;
-  listele();
+  anaSayfa();
   $("#bakimSonuc").textContent = `${d.silinen.length} dosya silindi (${mb(d.bayt)})`;
 }
 
