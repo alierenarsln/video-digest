@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, worker
+from . import db, llm, worker
 from .config import (
     ANTHROPIC_API_KEY,
     APP_PASSWORD,
@@ -29,7 +29,7 @@ from .config import (
     ensure_dirs,
     provider_available,
 )
-from .pipeline import frames
+from .pipeline import ask, frames
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -57,6 +57,10 @@ class JobRequest(BaseModel):
 
 class CollectionUpdate(BaseModel):
     collection: str
+
+
+class Question(BaseModel):
+    question: str
 
 
 def _providers() -> list[dict]:
@@ -388,6 +392,35 @@ async def get_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(404, "iş bulunamadı")
     return job
+
+
+@app.post("/jobs/{job_id}/ask")
+async def ask_job(job_id: str, req: Question) -> dict:
+    """Kaynağa soru sor — cevap yalnızca transkriptten gelir, uydurmaz.
+
+    Rakiplerdeki "içerikle sohbet"in dürüst hâli: cevap kaynakta yoksa found=false
+    döner ("bunu kaynakta bulamadım"). Transkript iş üretilirken diske yazıldı
+    (worker: transcript_path); onu okuyup soruyla birlikte modele veriyoruz.
+    """
+    job = db.get(job_id)
+    if job is None:
+        raise HTTPException(404, "iş bulunamadı")
+    if job["status"] != "done":
+        raise HTTPException(409, f"iş henüz hazır değil (durum: {job['status']})")
+    soru = req.question.strip()
+    if not soru:
+        raise HTTPException(400, "soru boş olamaz")
+
+    meta = job.get("meta") or {}
+    tpath = meta.get("transcript_path")
+    if not tpath or not Path(tpath).exists():
+        raise HTTPException(409, "bu işin transkripti yok — soru sorulamıyor")
+    transcript = Path(tpath).read_text(encoding="utf-8")
+
+    # Sağlayıcı iş başına seçilmişti (özetleme hangi modeli kullandıysa sohbet de
+    # onu kullansın); windows() ve complete_json bunu ContextVar'dan okur.
+    llm.set_provider(job.get("provider") or llm.provider())
+    return await ask.answer(job.get("title") or "", transcript, soru)
 
 
 @app.get("/jobs/{job_id}/markdown", response_class=PlainTextResponse)
