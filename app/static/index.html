@@ -234,6 +234,40 @@ input[type=text]::placeholder { color: var(--text-faint); }
   min-height: 2px; background: var(--surface-inset); }
 .kurtarilan.acik .govdeIm { cursor: default; }
 
+/* kitaplık — geniş göz atma görünümü */
+#kitaplik { animation: tnk-fade-up var(--dur-3) var(--ease-standard); }
+.kolBolum { margin-bottom: var(--space-7); }
+.kolBolum > .bas { display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: var(--space-4); padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-hair); }
+.kolBolum > .bas h2 { font-size: var(--fs-h2); }
+.kolBolum > .bas .say { font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--text-faint); }
+.kartlar { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4); }
+.kitap {
+  display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: pointer;
+  background: var(--surface-card); border: 1px solid var(--border-hair);
+  border-radius: var(--radius-2); padding: 14px 15px;
+  transition: border-color var(--dur-1) var(--ease-standard),
+              box-shadow var(--dur-1) var(--ease-standard);
+}
+.kitap:hover { border-color: var(--border-accent); box-shadow: var(--shadow-1); }
+.kitap .ad { font-family: var(--font-serif); font-size: 16px; font-weight: var(--fw-medium);
+  color: var(--text-strong); line-height: 1.3; }
+.kitap .ust2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
+.rozet { font-family: var(--font-mono); font-size: var(--fs-micro);
+  letter-spacing: var(--track-caps); text-transform: uppercase; padding: 1px 7px;
+  border-radius: 999px; }
+.rozet.tutorial { background: var(--sig-recovered-bg); color: var(--sig-recovered); }
+.rozet.kurs { background: var(--sig-uncertain-bg); color: var(--sig-uncertain); }
+.rozet.gelisim { background: var(--sig-verified-bg); color: var(--sig-verified); }
+.konular { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.konu { font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--text-muted); background: var(--surface-sunken);
+  border: 1px solid var(--border-hair); border-radius: var(--radius-1); padding: 1px 6px; }
+
 /* ipucu / hata */
 .ipucu { font-size: var(--fs-sm); color: var(--text-muted); max-width: 62ch; line-height: 1.55; }
 .hata { border-left: 3px solid var(--accent); background: var(--accent-tint);
@@ -252,6 +286,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
   <button class="marka" id="anaSayfa" type="button" aria-label="Ana sayfa">Tanık<b>.</b></button>
   <div class="sag">
     <span class="saglik" id="saglik"></span>
+    <button class="btn sessiz" id="kitaplikBtn" type="button">kitaplık</button>
     <button class="btn sessiz" id="tema" type="button" aria-label="Tema değiştir">tema</button>
   </div>
 </header>
@@ -314,6 +349,14 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <section class="kolon" id="icerik" style="display:none">
       <div id="durum"></div>
       <div class="ozet" id="ozet"></div>
+    </section>
+
+    <!-- KİTAPLIK -->
+    <section id="kitaplik" style="display:none">
+      <h1 style="font-size:var(--fs-h1)">Kitaplık</h1>
+      <p class="ipucu" style="margin:var(--space-2) 0 var(--space-6)">
+        Üretilen her şey, LLM'in konuya göre ayırdığı çalışmalarda.</p>
+      <div id="kitaplikIcerik"></div>
     </section>
   </main>
 </div>
@@ -694,21 +737,71 @@ function defterHtml(j) {
 
 // ── çizim ───────────────────────────────────────────────────────
 // Giriş (yeni kaynak) ekranına dön. "Tanık." markası ana-sayfa tuşu.
+// Üç ekrandan birini göster: giriş | içerik(özet) | kitaplık.
+function ekran(hangi) {
+  $("#giris").style.display = hangi === "giris" ? "block" : "none";
+  $("#icerik").style.display = hangi === "icerik" ? "block" : "none";
+  $("#kitaplik").style.display = hangi === "kitaplik" ? "block" : "none";
+}
+
 function anaSayfa() {
   secili = null;
   clearInterval(zamanlayici);
-  $("#icerik").style.display = "none";
-  $("#giris").style.display = "block";
+  ekran("giris");
   sonListe = null;
   listele();  // seçili vurguyu kaldırmak için yeniden çiz
 }
 $("#anaSayfa").onclick = anaSayfa;
 
+// ── kitaplık ────────────────────────────────────────────────────
+const TUR_ADI = { tutorial: "tutorial", kurs: "kurs", gelisim: "gelişim" };
+function kitapKart(j) {
+  const m = j.meta || {};
+  const ad = j.title || j.source.split(/[\\/]/).pop();
+  const renk = j.status === "done" ? "var(--sig-verified)"
+    : j.status === "error" ? "var(--accent)" : "var(--sig-uncertain)";
+  const durum = j.status === "done" ? "hazır" : j.status === "error" ? "hata" : "işleniyor";
+  const tarih = j.created_at
+    ? new Date(j.created_at * 1000).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })
+    : "";
+  const tur = TUR_ADI[m.learning_type];
+  const rozet = tur ? `<span class="rozet ${m.learning_type}">${tur}</span>` : "";
+  const konular = (m.topics || []).slice(0, 4)
+    .map((t) => `<span class="konu">${esc(t)}</span>`).join("");
+  return `<button class="kitap" data-id="${j.id}" type="button">
+    <div class="ad">${esc(ad)}</div>
+    <div class="ust2">${rozet}
+      <span class="nokta" style="background:${renk}"></span>${esc(durum)}
+      ${tarih ? `<span style="margin-left:auto">${esc(tarih)}</span>` : ""}</div>
+    ${konular ? `<div class="konular">${konular}</div>` : ""}
+  </button>`;
+}
+
+async function kitaplikGoster() {
+  ekran("kitaplik");
+  const isler = await (await fetch("/api/jobs")).json();
+  const gruplar = new Map();
+  for (const j of isler) {
+    const k = (j.collection || "").trim() || "— atanmamış —";
+    if (!gruplar.has(k)) gruplar.set(k, []);
+    gruplar.get(k).push(j);
+  }
+  let html = "";
+  for (const [k, list] of gruplar) {
+    html += `<div class="kolBolum"><div class="bas"><h2>${esc(k)}</h2>` +
+      `<span class="say">${list.length} içerik</span></div>` +
+      `<div class="kartlar">${list.map(kitapKart).join("")}</div></div>`;
+  }
+  const el = $("#kitaplikIcerik");
+  el.innerHTML = html || `<div class="bos">Henüz üretilmiş bir şey yok.</div>`;
+  el.querySelectorAll(".kitap").forEach((b) => b.onclick = () => goster(b.dataset.id));
+}
+$("#kitaplikBtn").onclick = kitaplikGoster;
+
 async function goster(id) {
   secili = id;
   clearInterval(zamanlayici);
-  $("#giris").style.display = "none";
-  $("#icerik").style.display = "block";
+  ekran("icerik");
   await ciz();
   listele();
   zamanlayici = setInterval(async () => {
