@@ -9,7 +9,7 @@ import shutil
 import traceback
 
 from . import db, llm, notify
-from .config import OUT_DIR, WORK_DIR
+from .config import DELETE_SOURCE_AFTER_DONE, OUT_DIR, UPLOAD_DIR, WORK_DIR
 from .pipeline import (
     document,
     fetch,
@@ -283,9 +283,30 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     shutil.rmtree(work, ignore_errors=True)
 
 
+def _saklama_temizle(job_id: str) -> None:
+    """İş bittikten sonra yüklenen kaynağı (en büyük dosya) sil — özet/transkript/
+    slaytlar kalır. delete_job ile aynı desen (UPLOAD_DIR/<id>.*); origin_url DB'de
+    durduğu için zaman damgaları hâlâ tıklanabilir.
+    """
+    if not DELETE_SOURCE_AFTER_DONE:
+        return
+    bayt = 0
+    for p in UPLOAD_DIR.glob(f"{job_id}.*"):
+        try:
+            bayt += p.stat().st_size
+            p.unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"[saklama] {p.name} silinemedi: {exc}", flush=True)
+    if bayt:
+        print(f"[saklama] {job_id} kaynagi silindi ({bayt // 1024} KB bosaldi)", flush=True)
+
+
 async def _run_one(job_id: str) -> None:
     try:
         await _process(job_id)
+        # Yalnızca BAŞARILI işte kaynağı at; hata olursa dosya kalsın ki
+        # kullanıcı sebebi araştırabilsin / yeniden denenebilsin.
+        _saklama_temizle(job_id)
         job = db.get(job_id) or {}
         payload = {
             "job_id": job_id,

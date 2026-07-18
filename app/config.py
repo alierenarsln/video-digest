@@ -163,6 +163,14 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
 # Konteynerde çalışıyorsak dışarı açık sayılır → şifresiz açılışa izin verme.
 IN_DOCKER = _bool("IN_DOCKER", False)
 
+# --- Saklama (retention) ---
+# İş "done" olunca yüklenen KAYNAK dosyayı (video/ses/PDF) sil. Bu, diskin asıl
+# yükü: özet + transkript + slayt görselleri (kütüphanenin gösterdiği her şey)
+# KALIR, yalnızca özetlendikten sonra işe yaramayan ham kaynak gider. Zaman
+# damgaları origin_url'e bağlı olduğu için tıklanabilirlik de bozulmaz.
+# Yeniden işlemek isteyen kapatır (KEEP source).
+DELETE_SOURCE_AFTER_DONE = _bool("DELETE_SOURCE_AFTER_DONE", True)
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 WORK_DIR = DATA_DIR / "work"
 OUT_DIR = DATA_DIR / "out"
