@@ -61,6 +61,9 @@ class CollectionUpdate(BaseModel):
 
 class Question(BaseModel):
     question: str
+    # Takip soruları için önceki tur(lar): [{"soru","cevap"}]. Sunucu durum
+    # tutmuyor — geçmişi istemci taşıyor, her istekte gönderiyor.
+    history: list[dict] = []
 
 
 def _providers() -> list[dict]:
@@ -420,7 +423,7 @@ async def ask_job(job_id: str, req: Question) -> dict:
     # Sağlayıcı iş başına seçilmişti (özetleme hangi modeli kullandıysa sohbet de
     # onu kullansın); windows() ve complete_json bunu ContextVar'dan okur.
     llm.set_provider(job.get("provider") or llm.provider())
-    return await ask.answer(job.get("title") or "", transcript, soru)
+    return await ask.answer(job.get("title") or "", transcript, soru, req.history)
 
 
 @app.get("/jobs/{job_id}/markdown", response_class=PlainTextResponse)

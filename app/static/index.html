@@ -931,6 +931,26 @@ async function ciz() {
 // ── kaynağa sor (dürüst sohbet) ─────────────────────────────────
 // Cevap yalnızca transkriptten gelir; kaynakta yoksa arka uç found=false döner
 // ("bulamadım"). Rakiplerin "içerikle sohbet"inin, ürünün tezine uyan hâli.
+// Sunucu durumsuz — sohbet geçmişini istemci taşır, takip sorusuyla gönderir.
+let sorGecmis = [];
+
+// Kaynak alıntısındaki [dk:sn] zaman damgasını videoda o ana atlayan bağlantıya
+// çevir. Ürünün en değerli özelliği (tıklanabilir zaman damgası) sohbette de.
+// Video URL'i yoksa (yüklenen dosya / PDF) düz metin kalır — uydurma hedef yok.
+function alintiLinkle(k, url) {
+  const m = k.match(/^\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*/);
+  if (!m || !url) return `<span>${esc(k)}</span>`;
+  const sn = m[1].split(":").reduce((a, b) => a * 60 + Number(b), 0);
+  let hedef;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("t", sn + "s");
+    hedef = u.toString();
+  } catch { return `<span>${esc(k)}</span>`; }
+  const kalan = k.slice(m[0].length);
+  return `<span><a href="${esc(hedef)}" target="_blank" rel="noopener">[${esc(m[1])}]</a> ${esc(kalan)}</span>`;
+}
+
 function sorKur(j) {
   const panel = $("#sor");
   panel.style.display = "block";
@@ -940,7 +960,9 @@ function sorKur(j) {
     panel.dataset.job = j.id;
     $("#sorAkis").innerHTML = "";
     $("#sorGiris").value = "";
+    sorGecmis = [];
   }
+  const videoUrl = j.origin_url || (j.meta && j.meta.url) || "";
   $("#sorForm").onsubmit = async (e) => {
     e.preventDefault();
     const q = $("#sorGiris").value.trim();
@@ -956,15 +978,19 @@ function sorKur(j) {
     try {
       const r = await fetch(`/jobs/${j.id}/ask`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        // Geçmişi (bu sorudan ÖNCEsi) gönder: model "peki ya bu?" gibi takip
+        // sorusunu çözebilsin — ama cevap yine transkriptten (arka uç kuralı).
+        body: JSON.stringify({ question: q, history: sorGecmis }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || r.statusText);
       cevap.className = "sorC" + (d.found ? "" : " bulunamadi");
       const kaynak = (d.kaynak || []).length
-        ? `<div class="sorKaynak">${d.kaynak.map((k) => `<span>${esc(k)}</span>`).join("")}</div>`
+        ? `<div class="sorKaynak">${d.kaynak.map((k) => alintiLinkle(k, videoUrl)).join("")}</div>`
         : "";
       cevap.innerHTML = md(d.answer || "", j.id) + kaynak;
+      // Turu geçmişe ekle (bulunamadı da geçerli bir tur — takip ona atıfla).
+      sorGecmis.push({ soru: q, cevap: d.answer || "" });
     } catch (err) {
       cevap.className = "sorC hata";
       cevap.textContent = "Sorulamadı: " + err.message;

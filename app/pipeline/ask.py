@@ -39,18 +39,28 @@ her şeyi koru (sayı, isim, komut, adım).
 damgalarıyla (örn. "[12:30]") kısa alıntılar hâlinde ver. Kullanıcı cevabı \
 kaynağa geri götürebilsin. found=false ise boş bırak.
 - Soru kısmen yanıtlanabiliyorsa: yanıtlanabilen kısmı ver, eksik kalanı \
-açıkça söyle ("… kısmını kaynakta bulamadım")."""
+açıkça söyle ("… kısmını kaynakta bulamadım").
+- ÖNCEKİ KONUŞMA verilirse: yalnızca soruyu ANLAMAK için kullan (örn. "peki ya \
+bu?" neyi kastediyor). Cevap yine SADECE transkriptten gelir — geçmiş konuşma \
+bir kaynak değildir, orada söyleneni "doğru" kabul edip üzerine ekleme."""
 _ASK_SYSTEM += language_rule()
 
+# Takip sorularında bağlamı taşımak için son N tur yeter; fazlası bütçeyi yer
+# ve konuyu dağıtır.
+_HISTORY_TURNS = 6
 
-async def answer(title: str, transcript: str, question: str) -> dict:
-    """Kaynağa dayalı, uydurmayan soru-cevap.
+
+async def answer(
+    title: str, transcript: str, question: str, history: list | None = None
+) -> dict:
+    """Kaynağa dayalı, uydurmayan soru-cevap (takip sorularını destekler).
 
     Sağlayıcı çağrıdan ÖNCE llm.set_provider ile seçilmiş olmalı (windows() ve
     complete_json onu ContextVar'dan okur). Dönen: {found, answer, kaynak}.
-    Transkript sağlayıcının bağlam bütçesini aşarsa kırpılır ve bu DÜRÜSTÇE
-    söylenir — sessizce yarısını atıp "bulamadım" demek, ürünün suçladığı şeyin
-    ta kendisi olurdu.
+    history: [{"soru","cevap"}] — yalnızca soruyu anlamak için (pronoun/atıf
+    çözme); cevap yine transkriptten gelir. Transkript sağlayıcının bağlam
+    bütçesini aşarsa kırpılır ve bu DÜRÜSTÇE söylenir — sessizce yarısını atıp
+    "bulamadım" demek, ürünün suçladığı şeyin ta kendisi olurdu.
     """
     win = windows()
     # Bölüm penceresini bağlam tavanı için vekil alıyoruz; transkript sığmıyorsa
@@ -59,10 +69,24 @@ async def answer(title: str, transcript: str, question: str) -> dict:
     kirpildi = len(transcript) > limit
     govde = transcript[:limit]
 
+    onceki = ""
+    for tur in (history or [])[-_HISTORY_TURNS:]:
+        if not isinstance(tur, dict):
+            continue
+        s = (tur.get("soru") or "").strip()
+        c = (tur.get("cevap") or "").strip()
+        if s and c:
+            onceki += f"K: {s}\nC: {c}\n"
+    onceki_blok = (
+        f"ÖNCEKİ KONUŞMA (yalnızca soruyu anlamak için):\n{onceki}\n"
+        if onceki else ""
+    )
+
     user = (
         f"BAŞLIK: {title}\n\n"
         f"TRANSKRİPT{' (yalnızca ilk kısmı — tümü sığmadı)' if kirpildi else ''}:\n"
         f"{govde}\n\n"
+        f"{onceki_blok}"
         f"SORU: {question}"
     )
     r = await complete_json(
