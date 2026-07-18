@@ -88,6 +88,16 @@ input[type=text]::placeholder { color: var(--text-faint); }
 
 /* iş listesi */
 .yanBaslik { margin-bottom: var(--space-3); }
+/* Koleksiyon başlığı — LLM'in atadığı çalışma adı. */
+.kolBaslik { display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-serif); font-size: var(--fs-sm); font-weight: var(--fw-semibold);
+  color: var(--text-strong); margin: var(--space-4) 0 4px; padding: 0 10px; }
+.kolBaslik:first-child { margin-top: 0; }
+.kolBaslik span { font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--text-faint); font-weight: normal; }
+.kolBaslik.pasif { font-family: var(--font-mono); font-size: var(--fs-micro);
+  font-weight: normal; letter-spacing: var(--track-caps); text-transform: uppercase;
+  color: var(--text-faint); }
 .is {
   display: block; width: 100%; text-align: left; cursor: pointer;
   background: transparent; border: 1px solid transparent; border-radius: var(--radius-1);
@@ -127,6 +137,9 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .defterAc { flex: none; font-family: var(--font-sans); font-size: var(--fs-sm);
   font-weight: var(--fw-medium); color: var(--accent); }
 .defterIc { padding: 2px 14px 14px; border-top: 1px solid var(--border-hair); }
+.kolSatir { display: flex; align-items: center; gap: 10px; margin-top: var(--space-3); }
+.kolSatir b { font-family: var(--font-serif); color: var(--text-strong); }
+.kolSatir .btn { margin-left: auto; }
 .defterNot { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--space-3); }
 .defterOlcum .turler b { color: var(--sig-recovered); }
 /* Kurtarma bir KAZANÇ — uyarı değil. Sağlama tonu, alarm yok. */
@@ -495,20 +508,37 @@ async function saglik() {
 }
 
 // ── liste ───────────────────────────────────────────────────────
+function isHtml(j) {
+  const renk = j.status === "done" ? "var(--sig-verified)"
+    : j.status === "error" ? "var(--accent)" : "var(--sig-uncertain)";
+  const etiket = j.status === "done" ? "hazır"
+    : j.status === "error" ? "hata" : asamaAdi(j.stage);
+  const ad = j.title || j.source.split(/[\\/]/).pop();
+  return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
+    <div class="ad">${esc(ad)}</div>
+    <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}${
+      j.provider ? ` · ${esc(j.provider)}` : ""}</div>
+  </button>`;
+}
+
 async function listele() {
   const isler = await (await fetch("/api/jobs")).json();
-  const html = isler.map((j) => {
-    const renk = j.status === "done" ? "var(--sig-verified)"
-      : j.status === "error" ? "var(--accent)" : "var(--sig-uncertain)";
-    const etiket = j.status === "done" ? "hazır"
-      : j.status === "error" ? "hata" : asamaAdi(j.stage);
-    const ad = j.title || j.source.split(/[\\/]/).pop();
-    return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
-      <div class="ad">${esc(ad)}</div>
-      <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}${
-        j.provider ? ` · ${esc(j.provider)}` : ""}</div>
-    </button>`;
-  }).join("") || `<div class="ipucu">Henüz kaynak yok.</div>`;
+  // LLM'in atadığı çalışmaya (koleksiyon) göre grupla. İşler zaten en yeni
+  // önce; Map ekleme sırası korunur → en son dokunulan çalışma üstte.
+  const gruplar = new Map();
+  for (const j of isler) {
+    const k = (j.collection || "").trim();
+    if (!gruplar.has(k)) gruplar.set(k, []);
+    gruplar.get(k).push(j);
+  }
+  let html = "";
+  for (const [k, list] of gruplar) {
+    // Tek grup ve o da atanmamışsa başlık gösterme (düz liste).
+    if (k) html += `<div class="kolBaslik">${esc(k)} <span>${list.length}</span></div>`;
+    else if (gruplar.size > 1) html += `<div class="kolBaslik pasif">işleniyor / atanmamış</div>`;
+    html += list.map(isHtml).join("");
+  }
+  html = html || `<div class="ipucu">Henüz kaynak yok.</div>`;
 
   // Her 5 sn'de DOM'u komple yeniden yazmak odağı kaçırıyor ve tıklamayı
   // bozuyordu; değişmediyse dokunma.
@@ -648,6 +678,11 @@ function defterHtml(j) {
       ${karantinaHtml}
       ${sikismaHtml}
       <div class="defterNot">Defter, ölçtüğü boşlukları bilir; ölçemediğini bilmez.</div>
+      <div class="kolSatir">
+        <span class="eyebrow">çalışma</span>
+        <b>${esc(j.collection || "atanmadı")}</b>
+        <button class="btn sessiz" id="kolDegistir" type="button">değiştir</button>
+      </div>
       <div class="satir" style="margin-top:var(--space-4)">
         <a class="btn sessiz" href="/jobs/${j.id}/markdown" target="_blank" rel="noopener"
            style="text-decoration:none">markdown</a>
@@ -724,6 +759,18 @@ async function ciz() {
     $("#defterAc").textContent = acik ? "aç" : "kapat";
   };
   $("#sil").onclick = () => silJob(j.id, j.title || j.id);
+  $("#kolDegistir").onclick = async () => {
+    // Mevcut çalışmaları öner ki tutarlı ad kullanılsın (aynı ad = aynı grup).
+    const mevcut = await (await fetch("/api/collections")).json().catch(() => []);
+    const ipucu = mevcut.length ? `\n\nMevcut çalışmalar:\n${mevcut.join("\n")}` : "";
+    const ad = prompt(`Bu içeriği hangi çalışmaya taşıyalım?${ipucu}`, j.collection || "");
+    if (ad === null) return;
+    await fetch(`/jobs/${j.id}/collection`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ collection: ad.trim() }),
+    });
+    sonListe = null; await ciz(); listele();
+  };
 
   $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
   enstrumanla($("#ozet"));

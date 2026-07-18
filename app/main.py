@@ -55,6 +55,10 @@ class JobRequest(BaseModel):
     provider: str | None = None
 
 
+class CollectionUpdate(BaseModel):
+    collection: str
+
+
 def _providers() -> list[dict]:
     """Anahtarı olan sağlayıcılar + arayüzde gösterilecek artı/eksileri."""
     out = []
@@ -266,6 +270,25 @@ def _remove(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
     else:
         path.unlink(missing_ok=True)
+
+
+@app.post("/jobs/{job_id}/collection")
+async def set_collection(job_id: str, req: CollectionUpdate) -> dict:
+    """Kullanıcı LLM'in atadığı çalışmayı değiştirir (şeffaf + düzeltilebilir).
+
+    Yeni bir ad da yazabilir (yeni çalışma) ya da mevcut bir adı — gruplama
+    ada göre olduğu için birebir aynı ad aynı grup demek.
+    """
+    if db.get(job_id) is None:
+        raise HTTPException(404, "iş bulunamadı")
+    ad = req.collection.strip()
+    db.update(job_id, collection=ad or None)
+    return {"ok": True, "collection": ad}
+
+
+@app.get("/api/collections")
+async def collections() -> list[str]:
+    return db.distinct_collections()
 
 
 @app.delete("/jobs/{job_id}")

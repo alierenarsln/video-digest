@@ -40,7 +40,8 @@ def init() -> None:
         # CREATE TABLE IF NOT EXISTS mevcut tabloya yeni sütun EKLEMEZ; şema
         # büyüdükçe eski kurulumlar sessizce kırılır (SELECT/UPDATE hata verir).
         var = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
-        for ad, tanim in (("origin_url", "TEXT"), ("provider", "TEXT")):
+        # collection: LLM'in otomatik atadığı çalışma/konu adı (koleksiyon).
+        for ad, tanim in (("origin_url", "TEXT"), ("provider", "TEXT"), ("collection", "TEXT")):
             if ad not in var:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")
                 print(f"[db] goc: jobs.{ad} sutunu eklendi", flush=True)
@@ -81,7 +82,7 @@ def list_jobs(limit: int = 50) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
             "SELECT id, status, stage, source, origin_url, title, provider, error,"
-            " created_at, updated_at, meta FROM jobs ORDER BY created_at DESC LIMIT ?",
+            " collection, created_at, updated_at, meta FROM jobs ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     out = []
@@ -90,6 +91,17 @@ def list_jobs(limit: int = 50) -> list[dict]:
         job["meta"] = json.loads(job["meta"]) if job["meta"] else None
         out.append(job)
     return out
+
+
+def distinct_collections() -> list[str]:
+    """LLM'in otomatik ataması için: mevcut çalışma/konu adları (en yeni önce)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT collection, MAX(created_at) c FROM jobs "
+            "WHERE collection IS NOT NULL AND collection != '' "
+            "GROUP BY collection ORDER BY c DESC"
+        ).fetchall()
+    return [r["collection"] for r in rows]
 
 
 def delete_job(job_id: str) -> None:

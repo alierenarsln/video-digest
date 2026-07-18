@@ -128,8 +128,9 @@ _LEARNING_SCHEMA = {
             },
         },
         "deepen_prompt": {"type": "string"},
+        "topics": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["type", "steps", "actions", "quiz", "deepen_prompt"],
+    "required": ["type", "steps", "actions", "quiz", "deepen_prompt", "topics"],
     "additionalProperties": False,
 }
 
@@ -158,7 +159,12 @@ kavrama ölçen sorular. genel/gelisim ise BOŞ liste.
 Amaç: izleyici bu prompt'u yapıştırıp konuyu araştırsın, örneklerle pekiştirsin, \
 kendini sınasın. Prompt şunları içermeli: videonun ana konuları (adıyla), \
 "bana şunları öğret / örneklerle açıkla / beni sorularla test et / sık yapılan \
-hataları göster" gibi somut istekler. Genel kalma — video ÖZELİNDE yaz."""
+hataları göster" gibi somut istekler. Genel kalma — video ÖZELİNDE yaz.
+
+6. topics: Bu içeriğin ana konularını 2-4 KISA etiketle ver ("Kubernetes", \
+"container", "REST API" gibi — cümle değil, kavram/konu adı). Bu etiketler aynı \
+konudaki içerikleri bir arada gruplamak için kullanılacak, o yüzden tutarlı ve \
+genel-geçer terimler seç (aşırı özel değil)."""
 
 _LEARNING_SYSTEM += language_rule()
 
@@ -283,6 +289,7 @@ class Digest:
     actions: list[str] = field(default_factory=list)       # gelisim: eylem maddesi
     quiz: list[dict] = field(default_factory=list)         # kurs/tutorial: öz-test
     deepen_prompt: str = ""            # araştır/test/derinleş — kopyalanabilir prompt
+    topics: list[str] = field(default_factory=list)        # konu etiketleri (gruplama)
 
 
 async def _summarize_section(
@@ -409,7 +416,68 @@ async def _learning_synthesis(summaries: list[SectionSummary]) -> dict:
             if q.get("soru", "").strip()
         ],
         "deepen_prompt": (r.get("deepen_prompt") or "").strip(),
+        "topics": [t.strip() for t in r.get("topics", []) if t.strip()][:4],
     }
+
+
+_COLLECTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collection": {"type": "string"},
+        "yeni": {"type": "boolean"},
+    },
+    "required": ["collection", "yeni"],
+    "additionalProperties": False,
+}
+
+_COLLECTION_SYSTEM = """Bir öğrenme kütüphanesini konuya göre düzenliyorsun. \
+Kullanıcının MEVCUT çalışma başlıkları (koleksiyonlar) ve yeni işlenen bir \
+içeriğin başlığı + konu etiketleri veriliyor. Görevin: bu yeni içerik hangi \
+çalışmaya ait?
+
+Kurallar:
+- Mevcut bir koleksiyonla AÇIKÇA aynı konudaysa onun ADINI birebir döndür \
+(yeni=false). Kaynak/kişi farklı olabilir; önemli olan KONU.
+- Hiçbiriyle net örtüşmüyorsa YENİ, kısa ve genel bir koleksiyon adı üret \
+(yeni=true) — örn. "Kubernetes", "İngilizce Gramer", "Makine Öğrenmesi". Dosya \
+adı ya da tek videonun başlığı DEĞİL, o konuyu kapsayan bir çalışma adı.
+- Emin değilsen yeni koleksiyon aç; yanlış bir koleksiyona tıkmaktansa ayrı dur \
+daha iyi (kullanıcı sonradan taşıyabilir).
+- Koleksiyon adı kısa olsun (1-4 kelime)."""
+_COLLECTION_SYSTEM += language_rule()
+
+
+async def classify_collection(
+    title: str, topics: list[str], existing: list[str]
+) -> str:
+    """LLM yeni içeriği mevcut bir çalışmaya atar ya da yeni çalışma açar.
+
+    Kullanıcı yerine otomatik gruplar (istenen davranış). Şeffaf: hangi çalışmaya
+    girdiği arayüzde görünür, yanlışsa taşınabilir. Düşerse başlık geri döner —
+    gruplama bir kolaylık, zorunluluk değil.
+    """
+    mevcut = "\n".join(f"- {c}" for c in existing) if existing else "(henüz yok)"
+    user = (
+        f"MEVCUT KOLEKSİYONLAR:\n{mevcut}\n\n"
+        f"YENİ İÇERİK:\nBaşlık: {title}\nKonular: {', '.join(topics) or '(yok)'}"
+    )
+    try:
+        r = await complete_json(
+            system=_COLLECTION_SYSTEM, user=user, schema=_COLLECTION_SCHEMA,
+            effort="low", max_tokens=500,
+        )
+    except Exception as exc:
+        print(f"[collection] atlandi: {exc}", flush=True)
+        return (title or "").strip()
+    ad = (r.get("collection") or "").strip()
+    if not ad:
+        return (title or "").strip()
+    # LLM "yeni" dese de mevcut bir adla birebir eşleşiyorsa onu kullan
+    # (büyük/küçük harf toleransı) — tekrar üretmesin.
+    for c in existing:
+        if c.lower() == ad.lower():
+            return c
+    return ad
 
 
 async def _critic_one(s: SectionSummary) -> int:
@@ -594,4 +662,5 @@ async def summarize(
         actions=ogrenme.get("actions", []),
         quiz=ogrenme.get("quiz", []),
         deepen_prompt=ogrenme.get("deepen_prompt", ""),
+        topics=ogrenme.get("topics", []),
     )

@@ -136,6 +136,12 @@ async def _process(job_id: str) -> None:
     db.update(job_id, stage="summarize")
     digest = await summarize.summarize(sections, transcript, shots)
 
+    # LLM içeriği bir çalışmaya (koleksiyona) otomatik atar — konuya göre.
+    koleksiyon = await summarize.classify_collection(
+        source.title, digest.topics, db.distinct_collections()
+    )
+    db.update(job_id, collection=koleksiyon)
+
     db.update(job_id, stage="render")
     markdown = render.render(
         digest,
@@ -155,6 +161,9 @@ async def _process(job_id: str) -> None:
         meta={
             **source.meta,
             "duration": source.duration,
+            # Öğrenme: tür + konu etiketleri (arayüz rozeti / gruplama).
+            "learning_type": digest.learning_type,
+            "topics": digest.topics,
             "sections": len(digest.sections),
             "critic_added": digest.added_by_critic,
             # Defter "6 madde" değil "3 sayı · 2 tanım" der; sayı tek başına
@@ -228,6 +237,12 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     db.update(job_id, stage="summarize")
     digest = await summarize.summarize(sections, transcript, [])
 
+    # LLM belgeyi de bir çalışmaya (koleksiyona) otomatik atar — konuya göre.
+    koleksiyon = await summarize.classify_collection(
+        title, digest.topics, db.distinct_collections()
+    )
+    db.update(job_id, collection=koleksiyon)
+
     db.update(job_id, stage="render")
     markdown = render.render_document(digest, title, pages, assets_rel)
     out_path = OUT_DIR / f"{job_id}.md"
@@ -243,6 +258,8 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
         result_path=str(out_path),
         meta={
             "kind": "document",
+            "learning_type": digest.learning_type,
+            "topics": digest.topics,
             "pages": len(pages),
             "pages_read": okunan,
             "pages_text_layer": sum(1 for p in pages if p.source == "metin-katmani"),
