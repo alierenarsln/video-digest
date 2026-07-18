@@ -645,12 +645,13 @@ function asamaHtml(job) {
 }
 
 // ── defter ──────────────────────────────────────────────────────
-// YALNIZCA arka ucun gerçekten ölçtüğü değerler çizilir. Sıkışma oranı ve
-// karantina henüz ÜRETİLMİYOR; olmayan ölçümü göstermek ürünün tam olarak
-// suçladığı şey olurdu. Arka uç üretmeye başlayınca burada belirirler.
+// YALNIZCA arka ucun gerçekten ölçtüğü değerler çizilir. Hep-görünür şerit
+// (defterBas) ürünün TEK farkını bir bakışta söylemeli: neyi ekrandan kurtardım,
+// neyi okuyamayıp karantinaya aldım. Detay (sıkışma, kanıt görselleri) "aç"ta.
 function defterHtml(j) {
   const m = j.meta || {};
   const belge = m.kind === "document";
+  const karSay = (m.quarantined || []).length;  // hep-görünür şerit için sayı
   const olcum = belge ? [
     // PDF: ölçü birimi sayfa; "kaç okundu, kaçı metin-katmanı, kaçı OCR".
     m.pages ? [`${m.pages}`, "sayfa"] : null,
@@ -658,11 +659,20 @@ function defterHtml(j) {
     m.pages_text_layer ? [`${m.pages_text_layer}`, "metin katmanı"] : null,
     m.pages_ocr ? [`${m.pages_ocr}`, "OCR"] : null,
     m.critic_added ? [`+${m.critic_added}`, "geri eklendi"] : null,
+    // Karantina hep-görünür: "0 karantina" da bir güven sinyali (hiçbir sayfayı
+    // okuyamadan atlamadım). Yalnızca ölçüm varsa (sayfa okundu) gösterilir.
+    m.pages != null ? [`${karSay}`, "karantina"] : null,
   ].filter(Boolean) : [
     m.duration ? [`${Math.max(1, Math.round(m.duration / 60))}`, "dk"] : null,
     m.sections ? [`${m.sections}`, "bölüm"] : null,
     m.frames_used ? [`${m.frames_used}`, "slayt okundu"] : null,
+    // Ekran kanalı ürünün TEK farkı — "aç"ın arkasında saklama, künyede söyle:
+    // konuşmacının söylemediği, yalnızca ekranda olan madde sayısı.
+    m.critic_from_screen ? [`${m.critic_from_screen}`, "ekrandan"] : null,
     m.critic_added ? [`+${m.critic_added}`, "geri eklendi"] : null,
+    // Karantina hep-görünür ama yalnızca ekran kanalı KOŞTUYSA (okunan slayt
+    // ya da karantina varsa) — sessiz/videosuz kaynakta "0 karantina" yanıltır.
+    (m.frames_used || karSay) ? [`${karSay}`, "karantina"] : null,
     m.transcript_repaired ? [null, "transkript onarıldı"] : null,
     m.subtitle_lang ? [null, `altyazı: ${m.subtitle_lang}${m.subtitle_auto ? " (otomatik)" : ""}`] : null,
   ].filter(Boolean);
