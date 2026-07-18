@@ -120,30 +120,34 @@ def render(
     return "\n".join(out)
 
 
-def _sayfa(n: float) -> str:
-    """Sayfa numarası 'zaman' olarak kodlanmıştı (document.py); geri çeviriyoruz."""
-    return f"s. {int(n)}"
+def _konum(n: float, kisa: str) -> str:
+    """Blok/sayfa numarası 'zaman' olarak kodlanmıştı (document.py); geri çevir."""
+    return f"{kisa} {int(n)}"
 
 
-def render_document(digest: Digest, title: str, pages, assets_rel: str) -> str:
-    """Belge özeti: video render'ının aynısı ama referanslar 'zaman' değil 'sayfa'.
+def render_document(
+    digest: Digest, title: str, pages, assets_rel: str,
+    birim: str = "sayfa", kisa: str = "s.",
+) -> str:
+    """Belge özeti: video render'ının aynısı ama referanslar 'zaman' değil konum.
 
-    Karantina sayfaları özetten sonra ayrı bölümde, kanıtıyla: defter
-    okuyamadığını gizlemez, sayfayı masaya koyar.
+    birim/kisa: PDF için "sayfa"/"s.", markdown için "bölüm"/"b." — markdown'ın
+    sayfası yok, ona "sayfa 3" demek ürünün karşı durduğu türden bir yalan olurdu.
+    Karantina sayfaları özetten sonra ayrı bölümde, kanıtıyla.
     """
     out: list[str] = [f"# {title}", ""]
     okunan = sum(1 for p in pages if not p.quarantined and p.text.strip())
-    out += [f"{len(pages)} sayfa · {okunan} okundu", ""]
+    out += [f"{len(pages)} {birim} · {okunan} okundu", ""]
 
     out += ["## TL;DR", ""]
     out += [f"- {item}" for item in digest.tldr]
     out += ["", "## Detaylı Özet", ""]
 
     for section in digest.sections:
-        out.append(f"### {_sayfa(section.section.start)} · {section.section.title}")
+        out.append(f"### {_konum(section.section.start, kisa)} · {section.section.title}")
         out += ["", section.summary, ""]
         for ts, text in section.points:
-            out.append(f"- `{_sayfa(ts)}` {text}")
+            out.append(f"- `{_konum(ts, kisa)}` {text}")
         out.append("")
 
     if digest.glossary:
@@ -155,22 +159,22 @@ def render_document(digest: Digest, title: str, pages, assets_rel: str) -> str:
 
     karantina = [p for p in pages if p.quarantined]
     if karantina:
-        out += ["## Okuyamadığım sayfalar", ""]
-        out += ["Bu sayfaların metnini özete katmadım. Kanıtı önünde — sen bak.", ""]
+        out += [f"## Okuyamadığım {birim}lar", ""]
+        out += [f"Bu {birim}ların metnini özete katmadım. Kanıtı önünde — sen bak.", ""]
         for p in karantina:
             if p.img_rel:
-                out.append(f"![Sayfa {p.number}]({p.img_rel})")
+                out.append(f"![{birim.capitalize()} {p.number}]({p.img_rel})")
             out.append(
-                f"<sub>`{_sayfa(p.number)}` okunamadı "
+                f"<sub>`{_konum(p.number, kisa)}` okunamadı "
                 f"(güven medyanı {p.conf}, {len(ACILAR)} açı denendi).</sub>"
             )
             out.append("")
 
     footer = (
-        f"Otomatik üretildi · {len(pages)} sayfa · {okunan} okundu · "
+        f"Otomatik üretildi · {len(pages)} {birim} · {okunan} okundu · "
         f"{len(digest.sections)} bölüm · eleştirmen {digest.added_by_critic} madde ekledi"
     )
     if karantina:
-        footer += f" · {len(karantina)} sayfa karantinada"
+        footer += f" · {len(karantina)} {birim} karantinada"
     out += ["---", "", f"<sub>{footer}</sub>", ""]
     return "\n".join(out)

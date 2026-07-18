@@ -356,8 +356,8 @@ input[type=text]::placeholder { color: var(--text-faint); }
 
         <div id="panelDosya" style="display:none">
           <label class="dosyaAlan" id="yukleAlan">
-            <input type="file" id="dosya" accept="video/*,audio/*,application/pdf,.mp4,.mkv,.webm,.mp3,.m4a,.wav,.pdf" hidden>
-            <span id="yukleMetin">Bir video, ses dosyası ya da PDF seç</span>
+            <input type="file" id="dosya" accept="video/*,audio/*,application/pdf,.mp4,.mkv,.webm,.mp3,.m4a,.wav,.pdf,.md,.markdown,.txt" hidden>
+            <span id="yukleMetin">Bir video, ses, PDF ya da Markdown seç</span>
           </label>
           <div class="satir" style="margin-top:var(--space-3);justify-content:flex-end">
             <button class="btn" id="btnDosya" type="button">İşle</button>
@@ -651,8 +651,14 @@ function asamaHtml(job) {
 function defterHtml(j) {
   const m = j.meta || {};
   const belge = m.kind === "document";
+  const isMd = m.kind === "markdown";  // md() renderer'ı gölgelememek için "isMd"
   const karSay = (m.quarantined || []).length;  // hep-görünür şerit için sayı
-  const olcum = belge ? [
+  const olcum = isMd ? [
+    // Markdown/metin: sayfa/OCR/karantina yok — metin zaten okunabilir.
+    m.blocks ? [`${m.blocks}`, "bölüm"] : null,
+    m.words ? [`${m.words}`, "kelime"] : null,
+    m.critic_added ? [`+${m.critic_added}`, "geri eklendi"] : null,
+  ].filter(Boolean) : belge ? [
     // PDF: ölçü birimi sayfa; "kaç okundu, kaçı metin-katmanı, kaçı OCR".
     m.pages ? [`${m.pages}`, "sayfa"] : null,
     m.pages_read != null ? [`${m.pages_read}`, "okundu"] : null,
@@ -1046,7 +1052,7 @@ $("#dosya").onchange = () => {
 
 function sifirlaDosya() {
   $("#dosya").value = "";
-  $("#yukleMetin").textContent = "Bir video, ses dosyası ya da PDF seç";
+  $("#yukleMetin").textContent = "Bir video, ses, PDF ya da Markdown seç";
   $("#yukleAlan").classList.remove("dolu");
 }
 

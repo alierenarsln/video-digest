@@ -141,6 +141,45 @@ def extract(pdf: Path, out_dir: Path, assets_rel: str) -> list[Page]:
     return pages
 
 
+def extract_markdown(path: Path) -> list[Page]:
+    """Markdown/düz metin → bloklar. OCR/karantina YOK: metin zaten okunabilir,
+    'gezilemeyen kaynak' değil — ama aynı defter (segment/summarize/eleştirmen)
+    işlesin diye Page'e sarıyoruz. Blok numarası 'saniye' olarak kodlanır (PDF
+    gibi), render 'bölüm N' der (sayfa değil — markdown'ın sayfası yok).
+
+    Bölme: üst seviye (#, ##) başlıklar blok sınırı; başlık yoksa ~2500 karakter
+    pencere. İnce bölme zararsız — split_into_sections konuya göre yeniden gruplar.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    bloklar: list[str] = []
+    cur: list[str] = []
+    for ln in lines:
+        # Yeni üst-başlık, öncekinde içerik varsa, yeni blok başlatır.
+        if re.match(r"^#{1,2}\s", ln) and any(s.strip() for s in cur):
+            bloklar.append("\n".join(cur).strip())
+            cur = [ln]
+        else:
+            cur.append(ln)
+    if any(s.strip() for s in cur):
+        bloklar.append("\n".join(cur).strip())
+
+    # Başlık yok / tek dev blok → sabit pencere (aşırı uzun tek segment olmasın).
+    if len(bloklar) <= 1:
+        blob = text.strip()
+        bloklar = (
+            [blob[i : i + 2500] for i in range(0, len(blob), 2500)]
+            if len(blob) > 3000
+            else ([blob] if blob else [])
+        )
+
+    return [
+        Page(number=i + 1, text=b, source="metin-katmani", quarantined=False)
+        for i, b in enumerate(bloklar)
+        if b.strip()
+    ]
+
+
 def to_segments(pages: list[Page]) -> list[Segment]:
     """Sayfa numarası = 'saniye'. Boş/karantinalı sayfa segmente girmez —
     metni LLM'e gitmez, ama defterde kanıtıyla durur."""

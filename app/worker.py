@@ -69,11 +69,16 @@ async def _process(job_id: str) -> None:
 
     # PDF gezilemeyen bir kaynak (SPEC §0): ayrı hat — ses/kare yok, sayfa var.
     # Ama AYNI defter: segment + summarize + karantina değişmeden koşar.
+    # Markdown/metin: en basit hat — transkript/OCR yok, metin zaten okunabilir.
     kaynak = job["source"]
-    if not kaynak.startswith(("http://", "https://")) and \
-            Path(kaynak).suffix.lower() == ".pdf":
-        await _process_document(job_id, Path(kaynak), work)
-        return
+    if not kaynak.startswith(("http://", "https://")):
+        suffix = Path(kaynak).suffix.lower()
+        if suffix == ".pdf":
+            await _process_document(job_id, Path(kaynak), work)
+            return
+        if suffix in (".md", ".markdown", ".txt"):
+            await _process_text(job_id, Path(kaynak), work)
+            return
 
     db.update(job_id, status="running", stage="fetch")
     source = await fetch.fetch(job["source"], work)
@@ -277,6 +282,66 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
             # SPEC §2.2 loglanmış sigorta: en düşük gerçek-kelime oranı. Kapı
             # ateşlemese bile yazılır — külliyat bimodal olursa veri söyler.
             "min_word_ratio": round(min(oranlar), 3) if oranlar else None,
+            "transcript_path": str(transcript_path),
+        },
+    )
+    shutil.rmtree(work, ignore_errors=True)
+
+
+async def _process_text(job_id: str, path: Path, work: Path) -> None:
+    """Markdown/metin hattı: en basit — transkript/OCR/karantina yok, metin zaten
+    okunabilir. AYNI defter (segment/summarize/eleştirmen) işler; render 'sayfa'
+    değil 'bölüm' der. Blok numarası 'zaman' olarak kodlanır (document.py deseni).
+    """
+    if not path.exists():
+        raise RuntimeError(f"Dosya bulunamadı: {path}")
+
+    title = path.stem
+    db.update(job_id, status="running", stage="pages", title=title)
+
+    pages = await asyncio.to_thread(document.extract_markdown, path)
+    segments = document.to_segments(pages)
+    if not segments:
+        raise RuntimeError("Dosyada özetlenecek metin yok (boş ya da yalnızca başlık).")
+
+    transcript = transcribe.to_timestamped_text(segments)
+    transcript_path = OUT_DIR / f"{job_id}.transcript.txt"
+    transcript_path.write_text(transcript, encoding="utf-8")
+
+    db.update(job_id, stage="segment")
+    sections = await segment.split_into_sections(segments, title, transcript)
+
+    db.update(job_id, stage="summarize")
+    digest = await summarize.summarize(sections, transcript, [])
+
+    koleksiyon = await summarize.classify_collection(
+        title, digest.topics, db.distinct_collections()
+    )
+    db.update(job_id, collection=koleksiyon)
+
+    db.update(job_id, stage="render")
+    markdown = render.render_document(
+        digest, title, pages, assets_rel="", birim="bölüm", kisa="b."
+    )
+    out_path = OUT_DIR / f"{job_id}.md"
+    out_path.write_text(markdown, encoding="utf-8")
+
+    kelime = sum(len(p.text.split()) for p in pages)
+    db.update(
+        job_id,
+        status="done",
+        stage="done",
+        result_path=str(out_path),
+        meta={
+            "kind": "markdown",
+            "learning_type": digest.learning_type,
+            "topics": digest.topics,
+            "blocks": len(pages),
+            "words": kelime,
+            "sections": len(digest.sections),
+            "critic_added": digest.added_by_critic,
+            "critic_types": digest.critic_types,
+            "compression": digest.compression,
             "transcript_path": str(transcript_path),
         },
     )
