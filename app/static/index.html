@@ -181,8 +181,13 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .ozet a { text-decoration: underline; }
 
 /* kurtarılan görsel — ekran kanalından gelen; ENSTRÜMANLI */
-.kurtarilan { margin: var(--space-5) 0; border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2); background: var(--surface-card); overflow: hidden; }
+/* Kurtarılan görsel bir REFERANS küçük-resmidir, kahraman görüntü değil.
+   Yoğun bir video 78 slayt gömebiliyor; tam boy alt alta sayfayı devasa
+   uzatıyordu (~39.000px kaydırma). Kompakt tutup tıklayınca büyütüyoruz —
+   içerik görünür kalır, okuma metnini boğmaz. */
+.kurtarilan { margin: var(--space-4) 0; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2); background: var(--surface-card); overflow: hidden;
+  max-width: 440px; }
 .kurtarilan .bas { display: flex; align-items: center; gap: 10px; padding: 7px 11px;
   border-bottom: 1px solid var(--border-hair); background: var(--surface-sunken); }
 .kurtarilan .tur { font-family: var(--font-mono); font-size: var(--fs-micro);
@@ -195,7 +200,8 @@ input[type=text]::placeholder { color: var(--text-faint); }
    çöküp aynı noktaya yığılıyor, tarayıcı da hiçbirini istemiyordu — slaytlar
    sessizce boş kalıyordu. Zaten kurtarılan görsel ürünün tek farkı; onu
    ertelemek yanlış. min-height, yüklenene kadar düzenin zıplamasını önler. */
-.kurtarilan img { width: 100%; min-height: 2px; background: var(--surface-inset); }
+.kurtarilan img { width: 100%; max-height: 200px; object-fit: contain;
+  min-height: 2px; background: var(--surface-inset); }
 .kurtarilan.acik .govdeIm { cursor: default; }
 
 /* ipucu / hata */
