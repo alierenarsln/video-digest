@@ -597,9 +597,11 @@ async function saglik() {
 // ── liste ───────────────────────────────────────────────────────
 function isHtml(j) {
   const renk = j.status === "done" ? "var(--sig-verified)"
-    : j.status === "error" ? "var(--accent)" : "var(--sig-uncertain)";
+    : j.status === "error" ? "var(--accent)"
+    : j.status === "cancelled" ? "var(--text-faint)" : "var(--sig-uncertain)";
   const etiket = j.status === "done" ? "hazır"
-    : j.status === "error" ? "hata" : asamaAdi(j.stage);
+    : j.status === "error" ? "hata"
+    : j.status === "cancelled" ? "iptal" : asamaAdi(j.stage);
   const ad = j.title || j.source.split(/[\\/]/).pop();
   return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
@@ -875,12 +877,24 @@ async function ciz() {
   // Sohbet yalnızca hazır işte anlamlı: transkript diske ancak "done"da yazılıyor.
   $("#sor").style.display = "none";
 
-  if (j.status === "error") {
-    $("#durum").innerHTML = `<h1>Okuyamadım</h1>
-      <p class="ipucu" style="margin:var(--space-3) 0">İş yarıda kaldı. Sebebi aşağıda —
-      kısaltılmadı, olduğu gibi:</p>
-      <div class="hata">${esc(j.error || "bilinmeyen")}</div>`;
+  if (j.status === "error" || j.status === "cancelled") {
+    const iptal = j.status === "cancelled";
+    $("#durum").innerHTML = `<h1>${iptal ? "İptal edildi" : "Okuyamadım"}</h1>
+      <p class="ipucu" style="margin:var(--space-3) 0">${iptal
+        ? "Bu işi sen durdurdun. İstersen yeniden dene ya da sil."
+        : "İş yarıda kaldı. Sebebi aşağıda — kısaltılmadı, olduğu gibi:"}</p>
+      ${!iptal ? `<div class="hata">${esc(j.error || "bilinmeyen")}</div>` : ""}
+      <div class="satir" style="margin-top:var(--space-5)">
+        <button class="btn" id="tekrarDene" type="button">tekrar dene</button>
+        <button class="btn sessiz" id="silHata" type="button">sil</button>
+      </div>`;
     $("#ozet").innerHTML = "";
+    $("#tekrarDene").onclick = async () => {
+      const r = await fetch(`/jobs/${j.id}/retry`, { method: "POST" });
+      if (!r.ok) { alert("Yeniden denenemedi: " + ((await r.json()).detail || r.statusText)); return; }
+      sonListe = null; goster(j.id);  // kuyruğa girdi → ilerlemeyi izle
+    };
+    $("#silHata").onclick = () => silJob(j.id, j.title || j.id);
     return true;
   }
 
@@ -900,8 +914,18 @@ async function ciz() {
     $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>
       <p class="ipucu" style="margin:var(--space-3) 0 var(--space-5)">
         Kapatmana gerek yok — iş sunucuda devam eder.</p>
-      <div class="kart">${asamaHtml(j)}</div>${not}`;
+      <div class="kart">${asamaHtml(j)}</div>${not}
+      <div class="satir" style="margin-top:var(--space-4)">
+        <button class="btn sessiz" id="durdur" type="button">durdur / iptal</button>
+      </div>`;
     $("#ozet").innerHTML = "";
+    $("#durdur").onclick = async () => {
+      if (!confirm("Bu işi durdurmak istediğine emin misin?")) return;
+      const r = await fetch(`/jobs/${j.id}/cancel`, { method: "POST" });
+      if (!r.ok) { alert("Durdurulamadı: " + ((await r.json()).detail || r.statusText)); return; }
+      clearInterval(zamanlayici);
+      sonListe = null; goster(j.id);  // iptal edildi görünümüne geç
+    };
     return false;
   }
 

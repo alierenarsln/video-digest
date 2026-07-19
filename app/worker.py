@@ -27,6 +27,13 @@ _queue: asyncio.Queue[str] = asyncio.Queue()
 # koymasını engelliyor.
 _ucusta: set[str] = set()
 
+# İptal altyapısı: o an İŞLENEN işin görevi (running işi durdurmak için cancel
+# edilir) ve kullanıcının iptal ettiği iş id'leri (queued işi dequeue'da atlamak
+# + running iptalini döngü kapanışından ayırmak için).
+_current_id: str | None = None
+_current_task: "asyncio.Task | None" = None
+_user_cancel: set[str] = set()
+
 
 async def enqueue(job_id: str) -> None:
     _ucusta.add(job_id)
@@ -392,17 +399,71 @@ async def _run_one(job_id: str) -> None:
         await notify.callback(job["callback_url"], payload)
 
 
+def cancel(job_id: str) -> str | None:
+    """Queued ya da running işi iptal et. running ise o an işleyen görevi cancel
+    eder (bir sonraki await'te CancelledError ile durur); queued ise dequeue'da
+    atlanır. Dönen: 'cancelled' | 'not-active' | None (iş yok).
+    """
+    job = db.get(job_id)
+    if job is None:
+        return None
+    # waiting = link işi agent'ın indirmesini bekliyor; o da iptal edilebilmeli.
+    if job["status"] not in ("queued", "running", "waiting"):
+        return "not-active"
+    _user_cancel.add(job_id)
+    db.update(job_id, status="cancelled", stage="cancelled", error="Kullanıcı iptal etti")
+    if job_id == _current_id and _current_task is not None and not _current_task.done():
+        _current_task.cancel()
+    return "cancelled"
+
+
+async def retry(job_id: str) -> str | None:
+    """Hata almış / iptal edilmiş işi yeniden kuyruğa koy. Kaynak dosya duruyor
+    (saklama yalnızca 'done'da siler), o yüzden baştan koşabilir.
+    """
+    job = db.get(job_id)
+    if job is None:
+        return None
+    if job["status"] not in ("error", "cancelled"):
+        return "not-retryable"
+    _user_cancel.discard(job_id)
+    db.update(job_id, status="queued", stage="queued", error=None)
+    await enqueue(job_id)
+    return "requeued"
+
+
 async def loop() -> None:
+    global _current_id, _current_task
     while True:
         job_id = await _queue.get()
+        # Kuyruğa girdikten sonra iptal edildiyse hiç işleme.
+        if job_id in _user_cancel:
+            _user_cancel.discard(job_id)
+            db.update(job_id, status="cancelled", stage="cancelled")
+            _ucusta.discard(job_id)
+            _queue.task_done()
+            continue
+        _current_id = job_id
+        _current_task = asyncio.create_task(_run_one(job_id))
         try:
-            await _run_one(job_id)
-        except BaseException as exc:
-            # except Exception yetmez: CancelledError gibi bir BaseException
-            # döngüyü sessizce öldürür ve o andan sonra HİÇBİR iş işlenmez.
-            print(f"[worker] {job_id} beklenmedik sekilde dustu: {exc!r}", flush=True)
-            if isinstance(exc, asyncio.CancelledError):
+            await _current_task
+        except asyncio.CancelledError:
+            # İki olası kaynak: (a) kullanıcı bu işi iptal etti → işi durdur,
+            # döngü YAŞASIN; (b) döngünün kendisi kapatılıyor (lifespan) → yay.
+            if job_id in _user_cancel:
+                _user_cancel.discard(job_id)
+                db.update(job_id, status="cancelled", stage="cancelled",
+                          error="Kullanıcı iptal etti")
+                shutil.rmtree(WORK_DIR / job_id, ignore_errors=True)
+                print(f"[worker] {job_id} kullanici tarafindan iptal edildi", flush=True)
+            else:
                 raise
+        except BaseException as exc:
+            # except Exception yetmez: beklenmedik bir BaseException döngüyü
+            # sessizce öldürür ve o andan sonra HİÇBİR iş işlenmez.
+            print(f"[worker] {job_id} beklenmedik sekilde dustu: {exc!r}", flush=True)
         finally:
+            _current_id = None
+            _current_task = None
             _ucusta.discard(job_id)
             _queue.task_done()

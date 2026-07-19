@@ -426,6 +426,29 @@ async def ask_job(job_id: str, req: Question) -> dict:
     return await ask.answer(job.get("title") or "", transcript, soru, req.history)
 
 
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str) -> dict:
+    """Queued ya da running işi durdur. running olan da iptal edilebilir (o an
+    işleyen görev cancel edilir) — DELETE'in yapamadığı buydu."""
+    r = worker.cancel(job_id)
+    if r is None:
+        raise HTTPException(404, "iş bulunamadı")
+    if r == "not-active":
+        raise HTTPException(409, "iş zaten bitmiş/başlamamış — iptal edilecek bir şey yok")
+    return {"ok": True, "durum": "cancelled"}
+
+
+@app.post("/jobs/{job_id}/retry")
+async def retry_job(job_id: str) -> dict:
+    """Hata almış ya da iptal edilmiş işi yeniden kuyruğa koy."""
+    r = await worker.retry(job_id)
+    if r is None:
+        raise HTTPException(404, "iş bulunamadı")
+    if r == "not-retryable":
+        raise HTTPException(409, "yalnızca hata/iptal işleri yeniden denenebilir")
+    return {"ok": True, "durum": "queued"}
+
+
 @app.get("/jobs/{job_id}/markdown", response_class=PlainTextResponse)
 async def get_markdown(job_id: str) -> str:
     job = db.get(job_id)
