@@ -384,8 +384,8 @@ input[type=text]::placeholder { color: var(--text-faint); }
         <div class="ilerleme" id="ilerleme"><div id="ilerlemeCubuk"></div></div>
 
         <div style="margin-top:var(--space-5);border-top:1px solid var(--border-hair);padding-top:var(--space-4)">
-          <label class="eyebrow" for="icerik">içerik</label>
-          <select id="icerik" style="margin-top:6px">
+          <label class="eyebrow" for="icerikTur">içerik</label>
+          <select id="icerikTur" style="margin-top:6px">
             <option value="0">Video — ekrandaki slayt/kod da okunur</option>
             <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
           </select>
@@ -1212,7 +1212,7 @@ async function gonder(dosyaMi) {
   }
 
   const p = $("#saglayici").value || null;
-  const ses = $("#icerik") && $("#icerik").value === "1";  // sadece ses mi?
+  const ses = $("#icerikTur") && $("#icerikTur").value === "1";  // sadece ses mi?
   $("#btn").disabled = true; $("#btnDosya").disabled = true;
   try {
     let j;
