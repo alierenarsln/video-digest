@@ -384,7 +384,12 @@ input[type=text]::placeholder { color: var(--text-faint); }
         <div class="ilerleme" id="ilerleme"><div id="ilerlemeCubuk"></div></div>
 
         <div style="margin-top:var(--space-5);border-top:1px solid var(--border-hair);padding-top:var(--space-4)">
-          <label class="eyebrow" for="saglayici">model</label>
+          <label class="eyebrow" for="icerik">içerik</label>
+          <select id="icerik" style="margin-top:6px">
+            <option value="0">Video — ekrandaki slayt/kod da okunur</option>
+            <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
+          </select>
+          <label class="eyebrow" for="saglayici" style="display:block;margin-top:var(--space-4)">model</label>
           <select id="saglayici" style="margin-top:6px"></select>
           <div class="ipucu" id="saglayiciNot" style="margin-top:8px"></div>
         </div>
@@ -1128,11 +1133,12 @@ function sifirlaDosya() {
 
 // Yükleme XHR ile: fetch yükleme ilerlemesi vermiyor, 500 MB'lık videoda
 // göstergesiz beklemek "dondu mu?" hissi veriyor.
-function yukle(dosya, provider) {
+function yukle(dosya, provider, ses) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", dosya);
     if (provider) fd.append("provider", provider);
+    if (ses) fd.append("sadece_ses", "1");
 
     const x = new XMLHttpRequest();
     x.open("POST", "/jobs/upload");
@@ -1158,18 +1164,19 @@ async function gonder(dosyaMi) {
   if (dosyaMi ? !dosya : !kaynak) return;
 
   const p = $("#saglayici").value || null;
+  const ses = $("#icerik") && $("#icerik").value === "1";  // sadece ses mi?
   $("#btn").disabled = true; $("#btnDosya").disabled = true;
   try {
     let j;
     if (dosyaMi) {
-      j = await yukle(dosya, p);
+      j = await yukle(dosya, p, ses);
       sifirlaDosya();
     } else {
       const ref = ($("#referer") && $("#referer").value.trim()) || null;
       const r = await fetch("/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: kaynak, provider: p, referer: ref }),
+        body: JSON.stringify({ source: kaynak, provider: p, referer: ref, sadece_ses: ses }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       j = await r.json();

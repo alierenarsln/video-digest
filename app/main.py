@@ -56,6 +56,9 @@ class JobRequest(BaseModel):
     provider: str | None = None
     # CDN (Bunny/b-cdn.net gibi) referer-gated akışlarda kaynak site. Boş = yok.
     referer: str | None = None
+    # true = yalnızca ses işlensin (video indirilmez, ekran-OCR atlanır). Ekranda
+    # eğitici bir şey olmayan konuşmalar/podcast'ler için hızlı + gürültüsüz.
+    sadece_ses: bool = False
 
 
 class CollectionUpdate(BaseModel):
@@ -346,17 +349,22 @@ async def upload_job(
     file: UploadFile = File(...),
     provider: str | None = Form(None),
     callback_url: str | None = Form(None),
+    sadece_ses: str | None = Form(None),
 ) -> dict:
     """Dosya yükleyip iş oluşturur.
 
     YouTube veri merkezi IP'lerini engellediği için sunucuda link indirmek
     çalışmıyor; videoyu evde indirip buraya yüklemek o duvarı tamamen atlıyor.
     Yükleme bitince makinenizi kapatabilirsiniz, iş sunucuda devam eder.
+
+    sadece_ses: doluysa yüklenen dosyanın görüntüsü olsa bile OCR atlanır.
     """
     secilen = _validate_provider(provider)
     job_id = uuid.uuid4().hex[:12]
     dest, boyut = await _save_upload(file, job_id)
     db.create_job(job_id, str(dest), callback_url or DEFAULT_CALLBACK_URL, secilen)
+    if sadece_ses:
+        db.update(job_id, audio_only=1)
     await worker.enqueue(job_id)
     return {"job_id": job_id, "status": "queued", "provider": secilen, "bayt": boyut}
 
@@ -498,6 +506,8 @@ async def create_job(req: JobRequest) -> dict:
     ref = (req.referer or "").strip() or None
     if ref:
         db.update(job_id, referer=ref)
+    if req.sadece_ses:
+        db.update(job_id, audio_only=1)
 
     if kaynak.startswith(("http://", "https://")):
         # Sunucu YouTube'a erişemiyor (IP-engeli); onun için SAYFA linkleri

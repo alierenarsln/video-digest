@@ -83,16 +83,21 @@ def _find_download(work: Path) -> Path:
     return max(candidates, key=lambda p: p.stat().st_size)
 
 
-async def from_url(url: str, work: Path, referer: str | None = None) -> Source:
+async def from_url(
+    url: str, work: Path, referer: str | None = None, audio_only: bool = False
+) -> Source:
     # referer: bazı CDN'ler (Bunny/b-cdn.net gibi) yalnızca kaynak sitenin
     # referer'ıyla verir. Verilirse yt-dlp'ye geçiyoruz — böylece m3u8 SUNUCUDA
     # inebiliyor (lokalde yt-dlp çalıştırmaya gerek kalmıyor).
+    # audio_only: kullanıcı "sadece ses" seçtiyse görüntüyü hiç indirme — ekranda
+    # eğitici bir şey yoksa (konuşan kafa/podcast) hem daha hızlı hem OCR gürültüsü yok.
     ref = ["--referer", referer] if referer else []
     info = json.loads(
         await _run("yt-dlp", *ref, "--dump-single-json", "--no-playlist", "--no-warnings", url)
     )
 
-    if ENABLE_FRAMES:
+    video_iste = ENABLE_FRAMES and not audio_only
+    if video_iste:
         # Slayt OCR'ı için görüntü lazım; çözünürlüğü sınırlıyoruz — 720p
         # slayt metnini okumaya fazlasıyla yeter, indirme süresini kısaltır.
         fmt = (
@@ -105,6 +110,7 @@ async def from_url(url: str, work: Path, referer: str | None = None) -> Source:
             "-o", str(work / "download.%(ext)s"), url,
         )
     else:
+        # Sadece ses: bestaudio → m4a (çok daha küçük, hızlı indirir).
         await _run(
             "yt-dlp", *ref, "--no-playlist", "--no-warnings",
             "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
@@ -116,7 +122,7 @@ async def from_url(url: str, work: Path, referer: str | None = None) -> Source:
     audio = work / "audio.wav"
     await _to_wav(media, audio)
 
-    video = media if (ENABLE_FRAMES and await _has_stream(media, "v")) else None
+    video = media if (video_iste and await _has_stream(media, "v")) else None
 
     # Hazır altyazı varsa Whisper'a hiç gitmeyiz: bedava, anlık ve elle yazılmışsa
     # daha doğru. Başarısız olursa iş düşmez, Whisper'a döneriz.
@@ -153,7 +159,7 @@ async def from_url(url: str, work: Path, referer: str | None = None) -> Source:
     )
 
 
-async def from_file(path: Path, work: Path) -> Source:
+async def from_file(path: Path, work: Path, audio_only: bool = False) -> Source:
     if not path.exists():
         raise RuntimeError(f"Dosya bulunamadı: {path}")
     local = work / path.name
@@ -163,7 +169,8 @@ async def from_file(path: Path, work: Path) -> Source:
     await _require_audio(local)
     audio = work / "audio.wav"
     await _to_wav(local, audio)
-    video = local if (ENABLE_FRAMES and await _has_stream(local, "v")) else None
+    # audio_only: yüklenen dosyada görüntü olsa bile OCR'ı atla (kullanıcı istedi).
+    video = local if (ENABLE_FRAMES and not audio_only and await _has_stream(local, "v")) else None
 
     # Ev agent'ı linki indirirken altyazıyı da çekmiş olabilir; videonun yanına
     # <ad>.subs.json3 olarak bırakıyor. Sunucu linki hiç görmediği için altyazıyı
@@ -194,7 +201,9 @@ async def from_file(path: Path, work: Path) -> Source:
     )
 
 
-async def fetch(source: str, work: Path, referer: str | None = None) -> Source:
+async def fetch(
+    source: str, work: Path, referer: str | None = None, audio_only: bool = False
+) -> Source:
     if source.startswith(("http://", "https://")):
-        return await from_url(source, work, referer)
-    return await from_file(Path(source), work)
+        return await from_url(source, work, referer, audio_only)
+    return await from_file(Path(source), work, audio_only)
