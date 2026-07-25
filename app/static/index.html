@@ -611,12 +611,25 @@ async function saglayicilar() {
 // sızıyor ("4cf24e9629fc") — kullanıcıya anlamsız. Böyle bir durumda ilk konuyu
 // (örn. "Python Veri Yapıları") ya da nazik bir yedek göster.
 function gorunenAd(j) {
-  const ham = (j.title || (j.source ? j.source.split(/[\\/]/).pop() : "") || "").trim();
-  if (/^[0-9a-f]{12}$/i.test(ham)) {
-    const konu = j.meta && j.meta.topics && j.meta.topics[0];
-    return konu || "İsimsiz kaynak";
+  const baslik = (j.title || "").trim();
+  const hex = /^[0-9a-f]{12}$/i.test(baslik);
+  if (baslik && !hex) return baslik;  // gerçek başlık (yt-dlp / dosya adı)
+
+  const src = (j.source || "").trim();
+  // Link işi (henüz başlık yok, örn. indirilmeyi bekliyor) → URL'den anlamlı parça.
+  if (/^https?:\/\//i.test(src)) {
+    try {
+      const u = new URL(src);
+      const seg = u.pathname.split("/").filter(Boolean).pop();
+      return decodeURIComponent(seg || u.hostname);
+    } catch { /* URL parse edilemezse aşağı düş */ }
   }
-  return ham || "İsimsiz kaynak";
+  // Hex job_id başlık → ilk konuyu göster (kütüphanede bulunsun).
+  if (hex) {
+    const konu = j.meta && j.meta.topics && j.meta.topics[0];
+    if (konu) return konu;
+  }
+  return src.split(/[\\/]/).pop() || "İsimsiz kaynak";
 }
 
 async function saglik() {
