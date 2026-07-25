@@ -10,7 +10,14 @@ import time
 import traceback
 
 from . import db, llm, notify
-from .config import DELETE_SOURCE_AFTER_DONE, OUT_DIR, PART_SECONDS, UPLOAD_DIR, WORK_DIR
+from .config import (
+    DELETE_SOURCE_AFTER_DONE,
+    OUT_DIR,
+    PART_CONCURRENCY,
+    PART_SECONDS,
+    UPLOAD_DIR,
+    WORK_DIR,
+)
 from .pipeline import (
     document,
     fetch,
@@ -129,50 +136,56 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     provider = job.get("provider") or llm.provider()
     origin_url = job.get("origin_url") or source.meta.get("url")
     part_len = source.duration / n
-    db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"parça 1/{n}")
+    db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"0/{n} parça bitti")
 
     part_files = await _split_audio(source.audio_path, part_len, work)
     n = len(part_files) or n
-    koleksiyon = None
-    ozetler: list = []
-    hatalar: list = []
+    # Koleksiyonu başlıktan BİR KEZ belirle (paralel part'larda yarış olmasın).
+    koleksiyon = await summarize.classify_collection(base_title, [], db.distinct_collections())
 
-    for i, pf in enumerate(part_files):
+    # Part'lar PARALEL işlenir (PART_CONCURRENCY kadar aynı anda). Groq transkripti
+    # kendi semaforuyla sıralanır (kazanç sınırlı); yerel transkriptte tam paralel.
+    sem = asyncio.Semaphore(PART_CONCURRENCY)
+    biten = [0]
+
+    async def _bir_part(i, pf):
         t0 = i * part_len
         aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
         p_title = f"{base_title} — Part {i + 1} ({aralik})"
-        db.update(job_id, stage=f"parça {i + 1}/{n}")
-        try:
-            p_segs = await transcribe.transcribe(pf, work)
-        except Exception as exc:
-            print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
-            hatalar.append((p_title, str(exc)))
-            continue
-        # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
-        p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_segs]
-        p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
-        p_transcript = transcribe.to_timestamped_text(p_segs)
-        p_sections = await segment.split_into_sections(p_segs, p_title, p_transcript)
-        p_digest = await summarize.summarize(p_sections, p_transcript, p_shots)
-        if koleksiyon is None:
-            koleksiyon = await summarize.classify_collection(
-                base_title, p_digest.topics, db.distinct_collections()
+        async with sem:
+            try:
+                p_segs = await transcribe.transcribe(pf, work)
+            except Exception as exc:
+                print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
+                return ("hata", i, p_title, _hata_acikla(exc))
+            # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
+            p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_segs]
+            p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
+            p_transcript = transcribe.to_timestamped_text(p_segs)
+            p_sections = await segment.split_into_sections(p_segs, p_title, p_transcript)
+            p_digest = await summarize.summarize(p_sections, p_transcript, p_shots)
+            p_md = render.render(
+                p_digest, p_title, part_len, source.meta,
+                assets_rel=assets_rel if p_shots else None,
             )
-        p_md = render.render(
-            p_digest, p_title, part_len, source.meta,
-            assets_rel=assets_rel if p_shots else None,
-        )
-        cid = f"{job_id}p{i + 1}"
-        db.create_job(cid, job["source"], None, provider)
-        out = OUT_DIR / f"{cid}.md"
-        out.write_text(p_md, encoding="utf-8")
-        db.update(
-            cid, status="done", stage="done", title=p_title, collection=koleksiyon,
-            origin_url=origin_url, result_path=str(out),
-            meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
-        )
-        ozetler.append((p_title, p_digest))
-        print(f"[part] {cid} bitti: {p_title}", flush=True)
+            cid = f"{job_id}p{i + 1}"
+            db.create_job(cid, job["source"], None, provider)
+            out = OUT_DIR / f"{cid}.md"
+            out.write_text(p_md, encoding="utf-8")
+            db.update(
+                cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+                origin_url=origin_url, result_path=str(out),
+                meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
+            )
+            biten[0] += 1
+            db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
+            print(f"[part] {cid} bitti: {p_title}", flush=True)
+            return ("ok", i, p_title, p_digest)
+
+    sonuclar = await asyncio.gather(*[_bir_part(i, pf) for i, pf in enumerate(part_files)])
+    sonuclar.sort(key=lambda x: x[1])  # part sırasına geri diz
+    ozetler = [(t, d) for (s, _i, t, d) in sonuclar if s == "ok"]
+    hatalar = [(t, e) for (s, _i, t, e) in sonuclar if s == "hata"]
 
     # Birleşik "Tüm hali" = bu (parent) iş.
     combined = _birlestir(base_title, ozetler, n, hatalar)

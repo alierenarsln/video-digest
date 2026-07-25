@@ -188,6 +188,10 @@ DB_PATH = DATA_DIR / "jobs.sqlite3"
 # bölünüp her part AYRI özetlenir (derin part özeti + ayrı kütüphane girdisi),
 # tüm video ise "Tüm hali" olarak kalır. Part sayısı = round(süre/PART_SECONDS).
 PART_SECONDS = _int("PART_SECONDS", 1800)  # 30 dk
+# Uzun videoda kaç part AYNI ANDA işlensin. Groq transkripti kendi semaforuyla
+# (GROQ_CONCURRENCY) sıralanır → Groq'la kazanç sınırlı (özetleme örtüşür); yerel
+# transkriptte tam paralellik. 3 makul.
+PART_CONCURRENCY = _int("PART_CONCURRENCY", 3)
 
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)
