@@ -62,6 +62,10 @@ class JobRequest(BaseModel):
     # true = yalnızca ses işlensin (video indirilmez, ekran-OCR atlanır). Ekranda
     # eğitici bir şey olmayan konuşmalar/podcast'ler için hızlı + gürültüsüz.
     sadece_ses: bool = False
+    # Transkript kaynağı: "" / "groq" = sunucu (Groq Whisper, hızlı, kısa videolar);
+    # "yerel" = ev bilgisayarı (agent faster-whisper ile PC'de yazar, Groq 502 yok,
+    # uzun videolar için). "yerel" seçilirse link agent'a yönlenir (m3u8/CDN dahil).
+    transkript: str | None = None
 
 
 class CollectionUpdate(BaseModel):
@@ -278,12 +282,23 @@ async def usage() -> dict:
 
 @app.get("/api/pending-downloads")
 async def pending_downloads() -> list[dict]:
-    """Ev makinesindeki agent'ın indirmesi gereken linkler."""
-    return [
-        {"id": j["id"], "source": j["source"]}
-        for j in db.list_jobs(200)
-        if j["stage"] == "awaiting_download" and j["status"] == "waiting"
-    ]
+    """Ev makinesindeki agent'ın indirmesi gereken linkler.
+
+    referer: korumalı m3u8/CDN için — agent yt-dlp'ye geçirir (sunucudaki desenle aynı).
+    transkript: "yerel" ise agent videoyu indirdikten SONRA PC'de faster-whisper ile
+    transkript edip json3'ü altyazı olarak yükler → sunucu Groq'u tümden atlar.
+    """
+    out = []
+    for j in db.list_jobs(200):
+        if j["stage"] == "awaiting_download" and j["status"] == "waiting":
+            tam = db.get(j["id"]) or {}
+            out.append({
+                "id": j["id"],
+                "source": j["source"],
+                "referer": tam.get("referer"),
+                "transkript": tam.get("transkript"),
+            })
+    return out
 
 
 # Ev-agent'ının son "yaşıyorum" sinyali. Bellekte tutuluyor — sunucu yeniden
@@ -540,12 +555,19 @@ async def create_job(req: JobRequest) -> dict:
         db.update(job_id, referer=ref)
     if req.sadece_ses:
         db.update(job_id, audio_only=1)
+    # Transkript kaynağı: "yerel" seçilirse transkript ev bilgisayarında (agent)
+    # üretilecek — sakla ki pending-downloads agent'a bildirsin.
+    istek_yerel = (req.transkript or "").strip().lower() == "yerel"
+    if istek_yerel:
+        db.update(job_id, transkript="yerel")
 
     if kaynak.startswith(("http://", "https://")):
         # Sunucu YouTube'a erişemiyor (IP-engeli); onun için SAYFA linkleri
         # USE_LOCAL_AGENT açıkken ev agent'ını bekler. Ama m3u8/doğrudan medya
         # (Bunny CDN vb.) engeli yemez → SUNUCUDA iner, lokalde yt-dlp gerekmez.
-        if USE_LOCAL_AGENT and not _direkt_medya(kaynak):
+        # AMA "yerel" transkript seçildiyse video da agent'a gider: transkript
+        # PC'de üretilecek, dolayısıyla dosya orada lazım → _direkt_medya baypas.
+        if USE_LOCAL_AGENT and (istek_yerel or not _direkt_medya(kaynak)):
             db.update(job_id, status="waiting", stage="awaiting_download")
             return {"job_id": job_id, "status": "waiting", "provider": secilen}
 

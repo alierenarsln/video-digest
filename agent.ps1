@@ -53,8 +53,13 @@ while ($true) {
             Write-Host "[$($is.id)] indiriliyor: $($is.source)" -ForegroundColor Cyan
             Get-ChildItem $tmp -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
+            # Korumali m3u8/CDN icin referer (sunucudaki _direkt_medya deseniyle ayni).
+            # Yoksa bos dizi -> yt-dlp'ye hicbir sey eklenmez.
+            $refArgs = @()
+            if ($is.referer) { $refArgs = @("--referer", $is.referer) }
+
             # 720p yeter: slayt OCR'i icin fazlasiyla, yukleme cok daha hizli.
-            & $ytdlp --no-playlist --no-warnings `
+            & $ytdlp @refArgs --no-playlist --no-warnings `
                 -f "bestvideo[height<=720]+bestaudio/best[height<=720]/best" `
                 --merge-output-format mp4 `
                 -o "$tmp\v.%(ext)s" $is.source 2>&1 | Out-Null
@@ -68,34 +73,55 @@ while ($true) {
 
             $mb = [math]::Round($dosya.Length / 1MB, 1)
 
-            # Altyaziyi da cek: sunucu linki HIC gormedigi icin kendisi bulamaz.
-            # Elle yazilmis altyazi Whisper'dan daha iyi ve bedava - gondermezsek
-            # o avantaj kaybolur ve her sey Whisper'a duser.
-            #
-            # Yalnizca videonun KENDI dilindeki altyaziyi aliyoruz (sunucudaki
-            # politikayla ayni). Dil belirtmezsek YouTube'un makine cevirisi
-            # altyazilarindan biri gelebilir - ceviri uzerine ceviri olur.
-            $dil = (& $ytdlp --no-playlist --no-warnings --skip-download `
-                        --print "%(language)s" $is.source 2>$null | Select-Object -First 1)
+            # Altyazi kaynagi iki yol: (a) YEREL TRANSKRIPT istendiyse videoyu bu
+            # PC'de faster-whisper ile yaz; (b) degilse YouTube'un elle yazilmis
+            # altyazisini cek. Ikisi de json3 -> sunucu altyazi sayip Groq'u ATLAR.
             $altyazi = $null
-            if ($dil -and $dil -ne "NA") {
-                & $ytdlp --no-playlist --no-warnings --skip-download `
-                    --write-subs --sub-langs $dil --sub-format json3 `
-                    -o "$tmp\s.%(ext)s" $is.source 2>&1 | Out-Null
-                $altyazi = Get-ChildItem "$tmp\s*.json3" -ErrorAction SilentlyContinue |
-                           Select-Object -First 1
-            }
-
-            if ($altyazi) {
-                Write-Host "[$($is.id)] indi ($mb MB) + elle yazilmis altyazi, yukleniyor..." -ForegroundColor DarkGray
+            if ($is.transkript -eq "yerel") {
+                # Groq 502 yok: transkript PC'de kosar (uzun videolar icin secildi).
+                # yerel-transkript.py --json3: zaman damgali json3 (damgalar tiklanir).
+                Write-Host "[$($is.id)] indi ($mb MB) -> yerel transkript basliyor (faster-whisper/CPU, uzun surebilir)..." -ForegroundColor Cyan
+                $j3 = Join-Path $tmp "t.json3"
+                # try/catch SART: python.exe yoksa & cagrisi ErrorActionPreference=Stop
+                # altinda TERMINATING throw eder; sarmazsak dis catch'e sicrar, foreach
+                # kirilir (diger bekleyen isler atlanir). Sararak: yerel transkript
+                # basarisizsa altyazi=null kalir -> video altyazisiz yuklenir -> sunucu
+                # Groq'a duser (zarif degradasyon, sonsuz retry yok).
+                try {
+                    & ".\.venv\Scripts\python.exe" "yerel-transkript.py" $dosya.FullName "--json3" $j3
+                } catch {
+                    Write-Host "[$($is.id)] yerel transkript calistirilamadi: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+                if (Test-Path $j3) {
+                    $altyazi = Get-Item $j3
+                    Write-Host "[$($is.id)] yerel transkript bitti, yukleniyor..." -ForegroundColor Green
+                } else {
+                    Write-Host "[$($is.id)] yerel transkript URETILEMEDI -> sunucuda Groq'a dusecek" -ForegroundColor Yellow
+                }
             } else {
-                Write-Host "[$($is.id)] indi ($mb MB), altyazi yok -> Whisper, yukleniyor..." -ForegroundColor DarkGray
+                # Sunucu linki HIC gormedigi icin altyaziyi kendisi bulamaz. Yalnizca
+                # videonun KENDI dilindeki altyazi (sunucudaki politikayla ayni); dil
+                # belirtmezsek makine cevirisi gelebilir - ceviri uzerine ceviri olur.
+                $dil = (& $ytdlp @refArgs --no-playlist --no-warnings --skip-download `
+                            --print "%(language)s" $is.source 2>$null | Select-Object -First 1)
+                if ($dil -and $dil -ne "NA") {
+                    & $ytdlp @refArgs --no-playlist --no-warnings --skip-download `
+                        --write-subs --sub-langs $dil --sub-format json3 `
+                        -o "$tmp\s.%(ext)s" $is.source 2>&1 | Out-Null
+                    $altyazi = Get-ChildItem "$tmp\s*.json3" -ErrorAction SilentlyContinue |
+                               Select-Object -First 1
+                }
+                if ($altyazi) {
+                    Write-Host "[$($is.id)] indi ($mb MB) + elle yazilmis altyazi, yukleniyor..." -ForegroundColor DarkGray
+                } else {
+                    Write-Host "[$($is.id)] indi ($mb MB), altyazi yok -> Whisper, yukleniyor..." -ForegroundColor DarkGray
+                }
             }
 
             # curl.exe: PS 5.1 multipart'ta buyuk dosyayi bellege aliyor ve cokuyor.
             # Basligi da gonder: sunucu yalnizca dosyayi goruyor, dosya adi da
             # is numarasi -> baslik "c23e86cac7c3" gibi anlamsiz cikiyordu.
-            $baslik = (& $ytdlp --no-playlist --no-warnings --skip-download `
+            $baslik = (& $ytdlp @refArgs --no-playlist --no-warnings --skip-download `
                            --print "%(title)s" $is.source 2>$null | Select-Object -First 1)
 
             $curlArgs = @("-s", "-X", "POST", "$Sunucu/jobs/$($is.id)/attach",

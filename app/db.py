@@ -42,10 +42,12 @@ def init() -> None:
         var = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
         # collection: LLM'in otomatik atadığı çalışma/konu adı (koleksiyon).
         # referer: CDN'den (Bunny gibi) sunucu-tarafı indirmede gereken kaynak site.
-        # audio_only: kullanıcı "sadece ses" seçtiyse 1 — video indirilmez, OCR atlanır.
+        # audio_only: "sadece ses" seçildiyse 1 — video indirilmez, OCR atlanır.
+        # transkript: '' /auto | groq | yerel — transkript kaynağı seçimi (video/ses).
         for ad, tanim in (
             ("origin_url", "TEXT"), ("provider", "TEXT"),
             ("collection", "TEXT"), ("referer", "TEXT"), ("audio_only", "INTEGER"),
+            ("transkript", "TEXT"),
         ):
             if ad not in var:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")

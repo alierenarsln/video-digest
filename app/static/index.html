@@ -399,6 +399,12 @@ input[type=text]::placeholder { color: var(--text-faint); }
             <option value="0">Video — ekrandaki slayt/kod da okunur</option>
             <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
           </select>
+          <label class="eyebrow" for="transkriptKaynak" style="display:block;margin-top:var(--space-4)">transkript</label>
+          <select id="transkriptKaynak" style="margin-top:6px">
+            <option value="">Sunucu (Groq) — hızlı, kısa videolar için</option>
+            <option value="yerel">Yerel (ev bilgisayarı) — uzun videolar, Groq 502 yok</option>
+          </select>
+          <div class="ipucu" id="transkriptNot" style="margin-top:8px;display:none"></div>
           <label class="eyebrow" for="saglayici" style="display:block;margin-top:var(--space-4)">model</label>
           <select id="saglayici" style="margin-top:6px"></select>
           <div class="ipucu" id="saglayiciNot" style="margin-top:8px"></div>
@@ -662,9 +668,11 @@ async function saglik() {
 
 // Ev-agent'ı durumu: yalnız agent en az bir kez ping'lediyse göster (yerel/agent'sız
 // kullanımda gizli kalır, gürültü olmaz). Çevrimiçi=yeşil, değilse=uyarı + "PC'yi aç".
+let agentAcik = false;  // ev-agent çevrimiçi mi? — "yerel" transkript uyarısı için.
 async function agentDurum() {
   try {
     const s = await (await fetch("/api/agent/status")).json();
+    agentAcik = !!s.online;
     const el = $("#agentDurum");
     if (!s.ever_seen) { el.style.display = "none"; return; }
     el.style.display = "inline-flex";
@@ -1277,6 +1285,12 @@ async function gonder(dosyaMi) {
 
   const p = $("#saglayici").value || null;
   const ses = $("#icerikTur") && $("#icerikTur").value === "1";  // sadece ses mi?
+  // Transkript kaynağı yalnızca LİNK işlerinde anlamlı (yüklemede dosya zaten
+  // sunucuda). "yerel" = ev bilgisayarı transkript eder → agent açık olmalı.
+  const transkript = (!dosyaMi && $("#transkriptKaynak") && $("#transkriptKaynak").value) || "";
+  if (transkript === "yerel" && !agentAcik) {
+    if (!confirm("Yerel transkript ev bilgisayarında (agent.ps1) çalışır ama şu an çevrimdışı görünüyor.\n\nİş, PC'yi açıp agent'ı başlatana kadar bekler. Yine de gönderilsin mi?")) return;
+  }
   $("#btn").disabled = true; $("#btnDosya").disabled = true;
   try {
     let j;
@@ -1288,7 +1302,7 @@ async function gonder(dosyaMi) {
       const r = await fetch("/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: kaynak, provider: p, referer: ref, sadece_ses: ses }),
+        body: JSON.stringify({ source: kaynak, provider: p, referer: ref, sadece_ses: ses, transkript: transkript || null }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       j = await r.json();
@@ -1316,6 +1330,19 @@ $("#gelismisAc").onclick = () => {
   r.style.display = acik ? "none" : "block";
   $("#gelismisAc").textContent = acik ? "gelişmiş" : "gizle";
 };
+
+// Transkript kaynağı "yerel" seçilince ne demek olduğunu açıkla (ev bilgisayarı).
+if ($("#transkriptKaynak")) {
+  $("#transkriptKaynak").onchange = () => {
+    const el = $("#transkriptNot");
+    if ($("#transkriptKaynak").value === "yerel") {
+      el.style.display = "block";
+      el.textContent = "Video ev bilgisayarına inip orada (faster-whisper) transkript edilir — agent.ps1 çalışıyor olmalı. Groq atlanır: 502 hatası olmaz, uzun videolar için ideal.";
+    } else {
+      el.style.display = "none";
+    }
+  };
+}
 
 $("#ipucu").textContent = "Uzun videolar birkaç dakika sürebilir.";
 
