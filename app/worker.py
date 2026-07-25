@@ -553,6 +553,12 @@ def _hata_acikla(exc: Exception) -> str:
     elif "sign in to confirm" in dl or ("youtube" in dl and "bot" in dl):
         a = ("YouTube bu IP'yi bot sanıp engelledi (veri-merkezi IP'si). Sunucu "
              "YouTube indiremez; ev-agent'ı (agent.ps1) gerekir — link işleri onu bekler.")
+    elif "postprocessing" in dl or "conversion failed" in dl or "audio conversion" in dl:
+        a = ("Video İNDİ ama yt-dlp'nin ses dönüştürme adımı (ffmpeg) başarısız oldu — "
+             "indirme değil, işleme sorunu (link/referer ile ilgisi yok). Genelde 'sadece "
+             "ses' seçilince ffmpeg sesi hedef biçime çeviremeyince olurdu; bu artık "
+             "düzeltildi (ses native indirilip tek adımda WAV'a çevriliyor). Öneri: "
+             "'tekrar dene' — güncel kodla geçmeli. Sürerse 'Video' içerik türüyle dene.")
     elif "yt-dlp" in dl or "unable to download" in dl or "http error 4" in dl or "forbidden" in dl:
         a = ("Kaynak indirilemedi. Link erişilebilir mi? Korumalı bir .m3u8 ise "
              "'gelişmiş' altında doğru referer (örn. coderspace.io) gerekebilir.")

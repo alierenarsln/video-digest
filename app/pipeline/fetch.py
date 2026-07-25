@@ -110,10 +110,14 @@ async def from_url(
             "-o", str(work / "download.%(ext)s"), url,
         )
     else:
-        # Sadece ses: bestaudio → m4a (çok daha küçük, hızlı indirir).
+        # Sadece ses: bestaudio'yu NATIVE indir (m4a/webm/opus) — yeniden kodlama YOK.
+        # Eskiden "-x --audio-format m4a" postprocessor'ı vardı ama bazı kaynaklarda
+        # "Postprocessing: audio conversion failed" ile çöküyordu (ffmpeg AAC re-encode).
+        # Gereksiz de: bir alttaki _to_wav zaten 16kHz WAV'a çeviriyor → native indirip
+        # tek dönüşümle hallediyoruz, kırılgan ara adım kalkıyor (daha sağlam).
         await _run(
             "yt-dlp", *ref, "--no-playlist", "--no-warnings",
-            "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
+            "-f", "bestaudio/best",
             "-o", str(work / "download.%(ext)s"), url,
         )
 
