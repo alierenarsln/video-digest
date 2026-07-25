@@ -1,0 +1,20 @@
+name: Coolify Deploy
+
+# main'e her push'ta Coolify'ı deploy'a tetikler. Coolify'ın API deploy endpoint'i
+# Bearer token ister (GitHub webhook token gönderemez), o yüzden Actions üzerinden.
+# Gerekli: repo Secrets'ta COOLIFY_TOKEN (Coolify > Keys & Tokens'tan üretilir).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # elle de tetiklenebilsin (Actions sekmesinden)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify deploy
+        run: |
+          curl -sS --fail-with-body -X GET \
+            "https://coolify.automaterhub.com/api/v1/deploy?uuid=hysbk09medkh9cmrv0qj13gd&force=false" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
