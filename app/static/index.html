@@ -31,6 +31,12 @@
 .saglik { display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
 .nokta { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+/* kullanım barı — OpenRouter kalan kullanım yüzdesi */
+.kullanim { display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
+.kullanim .bar { width: 54px; height: 6px; border-radius: 999px;
+  background: var(--surface-sunken); overflow: hidden; flex: none; }
+.kullanim .bar i { display: block; height: 100%; }
 
 /* düzen */
 .govde { display: grid; grid-template-columns: 268px minmax(0, 1fr); min-height: calc(100vh - 53px); }
@@ -333,6 +339,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
   <div class="sag">
     <span class="saglik" id="saglik"></span>
     <span class="saglik" id="agentDurum" style="display:none" title="Ev indiricisi (YouTube linkleri için)"></span>
+    <span class="kullanim" id="kullanim" style="display:none"></span>
     <button class="btn sessiz" id="kitaplikBtn" type="button">kitaplık</button>
     <button class="btn sessiz" id="tema" type="button" aria-label="Tema değiştir">tema</button>
     <form method="POST" action="/logout" style="margin:0"><button class="btn sessiz" type="submit">çıkış</button></form>
@@ -463,6 +470,12 @@ const fmtTs = (sn) => {
   const d = String(Math.floor(t / 60) % 60).padStart(2, "0");
   const h = Math.floor(t / 3600);
   return h ? `${h}:${d}:${s}` : `${d}:${s}`;
+};
+
+// Süre metni: <60sn "N sn", değilse "N dk" (işlenme süresi / geçen süre).
+const fmtSure = (sn) => {
+  sn = Math.round(sn || 0);
+  return sn < 60 ? `${sn} sn` : `${Math.round(sn / 60)} dk`;
 };
 
 // ── tema ────────────────────────────────────────────────────────
@@ -659,6 +672,20 @@ async function agentDurum() {
     const metin = s.online ? "ev bilgisayarı: çevrimiçi" : "ev bilgisayarı: çevrimdışı → PC'yi aç";
     el.innerHTML = `<span class="nokta" style="background:${renk}"></span>${esc(metin)}`;
   } catch { /* durum alınamadıysa göstergeyi olduğu gibi bırak */ }
+}
+
+// Kullanım barı: OpenRouter kalan kullanım yüzdesi (limit varsa). Diğer sağlayıcı
+// ya da limitsiz anahtar → gizli (yüzde hesaplanamaz).
+async function kullanimGuncelle() {
+  try {
+    const u = await (await fetch("/api/usage")).json();
+    const el = $("#kullanim");
+    if (!u.var || u.yuzde == null) { el.style.display = "none"; return; }
+    el.style.display = "inline-flex";
+    const renk = u.yuzde > 20 ? "var(--sig-verified)" : "var(--accent)";
+    el.innerHTML = `kalan <span class="bar"><i style="width:${u.yuzde}%;background:${renk}"></i></span>%${u.yuzde}`;
+    el.title = `OpenRouter kalan: ${u.kalan} / ${u.limit}`;
+  } catch { /* alınamadıysa olduğu gibi bırak */ }
 }
 
 // ── liste ───────────────────────────────────────────────────────
@@ -936,6 +963,7 @@ function kitapKart(j) {
     ${kaynakSat ? `<div class="kaynakSat">${kaynakSat}</div>` : ""}
     <div class="ust2">${rozet}
       <span class="nokta" style="background:${renk}"></span>${esc(durum)}
+      ${m.islenme_sn ? `<span>· ${esc(fmtSure(m.islenme_sn))}'da işlendi</span>` : ""}
       ${tarih ? `<span style="margin-left:auto">${esc(tarih)}</span>` : ""}</div>
     ${konular ? `<div class="konular">${konular}</div>` : ""}
   </button>`;
@@ -1013,9 +1041,20 @@ async function ciz() {
           yükleyecek — çalışmıyorsa başlat. İş kaybolmaz, sırada bekler.</p>
         </div></div>`;
     }
+    // Geçen süre (canlı) + split işlerde "parça K/N"den tahmini kalan.
+    const gecen = j.created_at ? Math.max(0, Date.now() / 1000 - j.created_at) : 0;
+    let sureBilgi = `Geçen süre: ${fmtSure(gecen)}`;
+    const pm = (j.stage || "").match(/parça (\d+)\/(\d+)/);
+    if (pm) {
+      const k = +pm[1], n = +pm[2];
+      if (k >= 1 && gecen > 5 && n > k) {
+        sureBilgi += ` · tahmini kalan: ~${fmtSure(gecen / k * (n - k))}`;
+      }
+    }
     $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>
-      <p class="ipucu" style="margin:var(--space-3) 0 var(--space-5)">
+      <p class="ipucu" style="margin:var(--space-3) 0 var(--space-2)">
         Kapatmana gerek yok — iş sunucuda devam eder.</p>
+      <p class="ipucu" style="margin:0 0 var(--space-5);font-family:var(--font-mono)">${esc(sureBilgi)}</p>
       <div class="kart">${asamaHtml(j)}</div>${not}
       <div class="satir" style="margin-top:var(--space-4)">
         <button class="btn sessiz" id="durdur" type="button">durdur / iptal</button>
@@ -1284,6 +1323,8 @@ saglayicilar();
 saglik();
 agentDurum();
 setInterval(agentDurum, 20000);  // ev-agent durumunu 20 sn'de bir tazele
+kullanimGuncelle();
+setInterval(kullanimGuncelle, 60000);  // kullanım barını dakikada bir tazele
 listele();
 setInterval(listele, 5000);
 </script>

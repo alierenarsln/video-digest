@@ -17,9 +17,12 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import httpx
+
 from . import auth, db, llm, worker
 from .config import (
     ANTHROPIC_API_KEY,
+    OPENROUTER_API_KEY,
     APP_PASSWORD,
     APP_USER,
     DEFAULT_CALLBACK_URL,
@@ -247,6 +250,30 @@ async def list_jobs() -> list[dict]:
 @app.get("/api/providers")
 async def providers() -> list[dict]:
     return _providers()
+
+
+@app.get("/api/usage")
+async def usage() -> dict:
+    """OpenRouter anahtarının kalan kullanımı — header'da yüzdelik bar. Limit varsa
+    kalan yüzde; pay-as-you-go'da (limitsiz) yalnız harcanan. Diğer sağlayıcıda veri
+    yok → {var:false} (bar gizlenir)."""
+    if not OPENROUTER_API_KEY:
+        return {"var": False}
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                "https://openrouter.ai/api/v1/auth/key",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            )
+            d = (r.json() or {}).get("data") or {}
+    except Exception:
+        return {"var": False}
+    limit = d.get("limit")
+    rem = d.get("limit_remaining")
+    if limit and rem is not None:
+        return {"var": True, "yuzde": max(0, min(100, round(rem / limit * 100))),
+                "kalan": round(rem, 2), "limit": limit}
+    return {"var": True, "yuzde": None, "kullanilan": d.get("usage")}
 
 
 @app.get("/api/pending-downloads")

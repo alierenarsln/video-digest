@@ -6,6 +6,7 @@ Ağır iş (ffmpeg) CPU-bağlı olduğu için işler sırayla koşar; paralellik
 
 import asyncio
 import shutil
+import time
 import traceback
 
 from . import db, llm, notify
@@ -520,12 +521,51 @@ def _saklama_temizle(job_id: str) -> None:
         print(f"[saklama] {job_id} kaynagi silindi ({bayt // 1024} KB bosaldi)", flush=True)
 
 
+def _hata_acikla(exc: Exception) -> str:
+    """Ham hatayı LLM'le paylaşılabilir bir AÇIKLAMAYLA zenginleştir: 'ne oldu' +
+    'ne demek' + 'öneri'. Bilinen imzaları eşler; bilinmeyende ham hata döner."""
+    ham = str(exc)
+    dl = ham.lower()
+    a = ""
+    if "groq" in dl and ("502" in dl or "503" in dl or "500" in dl or "transkrip" in dl):
+        a = ("Groq'un transkripsiyon (Whisper) sunucusu geçici yanıt vermedi "
+             "(5xx = sunucu yükü/kesintisi, senin dosyanda sorun değil). Uzun "
+             "videolarda daha olası. Öneri: 'tekrar dene' (çoğu zaman geçer); video "
+             "30dk+ ise part'lara bölünür, yalnız hatalı part'ı yeniden dene; ya da "
+             "yerel transkript (yerel-transkript.py) ile Groq'u tümden atla.")
+    elif "429" in dl or "rate limit" in dl or "kota" in dl or "quota" in dl or "too many" in dl:
+        a = ("Sağlayıcı kotası doldu (dakikalık/günlük istek ya da token sınırı). "
+             "Öneri: birkaç dakika bekleyip tekrar dene; ya da arayüzden farklı "
+             "sağlayıcı seç (OpenRouter/Gemini/Groq).")
+    elif "sign in to confirm" in dl or ("youtube" in dl and "bot" in dl):
+        a = ("YouTube bu IP'yi bot sanıp engelledi (veri-merkezi IP'si). Sunucu "
+             "YouTube indiremez; ev-agent'ı (agent.ps1) gerekir — link işleri onu bekler.")
+    elif "yt-dlp" in dl or "unable to download" in dl or "http error 4" in dl or "forbidden" in dl:
+        a = ("Kaynak indirilemedi. Link erişilebilir mi? Korumalı bir .m3u8 ise "
+             "'gelişmiş' altında doğru referer (örn. coderspace.io) gerekebilir.")
+    elif "ses akışı yok" in dl or "no audio" in dl:
+        a = ("Kaynakta ses akışı yok — transkript çıkarılamaz (sessiz video ya da "
+             "yalnızca görüntü içeren dosya).")
+    elif "ffmpeg" in dl or "ffprobe" in dl:
+        a = ("Medya işleme hatası (ffmpeg). Dosya bozuk ya da desteklenmeyen bir "
+             "format olabilir; farklı bir kaynak/format dene.")
+    elif "güvenilir metin çıkmadı" in dl or "yalnızca başlık" in dl:
+        a = ("Belgeden okunabilir metin çıkmadı — tümüyle taranmış/görüntü olabilir. "
+             "Karantina kanıtları defterde; daha net bir tarama gerekebilir.")
+    return f"{ham}\n\nBu ne demek: {a}" if a else ham
+
+
 async def _run_one(job_id: str) -> None:
+    t0 = time.time()  # işlenme süresi: kuyruk beklemesi HARİÇ, running→done
     try:
         await _process(job_id)
         # Yalnızca BAŞARILI işte kaynağı at; hata olursa dosya kalsın ki
         # kullanıcı sebebi araştırabilsin / yeniden denenebilsin.
         _saklama_temizle(job_id)
+        # İşlenme süresini meta'ya ekle (arayüz "N dk'da işlendi" gösterir).
+        job = db.get(job_id) or {}
+        if job.get("meta") is not None:
+            db.update(job_id, meta={**job["meta"], "islenme_sn": round(time.time() - t0)})
         job = db.get(job_id) or {}
         payload = {
             "job_id": job_id,
@@ -537,9 +577,11 @@ async def _run_one(job_id: str) -> None:
         }
     except Exception as exc:
         traceback.print_exc()
-        db.update(job_id, status="error", stage="error", error=str(exc))
+        # Hatayı LLM'le paylaşılabilir açıklamayla zenginleştir (ne demek + öneri).
+        aciklama = _hata_acikla(exc)
+        db.update(job_id, status="error", stage="error", error=aciklama)
         shutil.rmtree(WORK_DIR / job_id, ignore_errors=True)
-        payload = {"job_id": job_id, "status": "error", "error": str(exc)}
+        payload = {"job_id": job_id, "status": "error", "error": aciklama}
 
     job = db.get(job_id) or {}
     if job.get("callback_url"):
