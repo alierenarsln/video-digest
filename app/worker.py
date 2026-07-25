@@ -100,7 +100,9 @@ async def _process(job_id: str) -> None:
         if job.get("title"):
             source.title = job["title"]
 
-    db.update(job_id, title=source.title)
+    # Yüklemede başlık zaten orijinal dosya adına ayarlanmış olabilir (upload_job)
+    # — job_id'yle ezmeyelim; yoksa source.title (link'te yt-dlp başlığı) kullanılır.
+    db.update(job_id, title=job.get("title") or source.title)
 
     if source.subtitles is not None:
         # Hazır altyazı bulundu (fetch aşamasında) — Whisper'a hiç gitmiyoruz.
@@ -227,7 +229,8 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     if not pdf.exists():
         raise RuntimeError(f"PDF bulunamadı: {pdf}")
 
-    title = pdf.stem
+    # Yükleme orijinal dosya adını başlık yaptıysa koru (yoksa dosya adı = job_id).
+    title = (db.get(job_id) or {}).get("title") or pdf.stem
     db.update(job_id, status="running", stage="pages", title=title)
 
     assets_rel = f"{job_id}_pages"
@@ -305,7 +308,8 @@ async def _process_text(job_id: str, path: Path, work: Path) -> None:
     if not path.exists():
         raise RuntimeError(f"Dosya bulunamadı: {path}")
 
-    title = path.stem
+    # Yükleme orijinal dosya adını başlık yaptıysa koru (yoksa dosya adı = job_id).
+    title = (db.get(job_id) or {}).get("title") or path.stem
     db.update(job_id, status="running", stage="pages", title=title)
 
     pages = await asyncio.to_thread(document.extract_markdown, path)

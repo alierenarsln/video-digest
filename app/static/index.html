@@ -661,8 +661,21 @@ function isHtml(j) {
   </button>`;
 }
 
+let tumIsler = [];  // aynı-kaynak uyarısı için son çekilen liste
+
 async function listele() {
   const isler = await (await fetch("/api/jobs")).json();
+  tumIsler = isler;
+  let html = "";
+
+  // Son eklenenler: en yeni 4 (koleksiyondan bağımsız) — az önce eklediğin
+  // hemen görünsün, gruplar arasında kaybolmasın.
+  const son = isler.slice(0, 4);
+  if (son.length) {
+    html += `<div class="kolBaslik">Son eklenenler</div>`;
+    html += son.map(isHtml).join("");
+  }
+
   // LLM'in atadığı çalışmaya (koleksiyon) göre grupla. İşler zaten en yeni
   // önce; Map ekleme sırası korunur → en son dokunulan çalışma üstte.
   const gruplar = new Map();
@@ -671,7 +684,7 @@ async function listele() {
     if (!gruplar.has(k)) gruplar.set(k, []);
     gruplar.get(k).push(j);
   }
-  let html = "";
+  if (son.length && gruplar.size) html += `<div class="kolBaslik pasif">çalışmalar</div>`;
   for (const [k, list] of gruplar) {
     // Tek grup ve o da atanmamışsa başlık gösterme (düz liste).
     if (k) html += `<div class="kolBaslik">${esc(k)} <span>${list.length}</span></div>`;
@@ -1158,10 +1171,32 @@ function yukle(dosya, provider, ses) {
   });
 }
 
+// Aynı kaynak zaten var mı? Link'te URL, dosyada dosya-adı eşleşmesi.
+function ayniVarMi(kaynak, dosyaAdi) {
+  const norm = (s) => (s || "").trim().toLowerCase().replace(/\/+$/, "");
+  const stem = dosyaAdi ? dosyaAdi.replace(/\.[^.]+$/, "") : "";
+  return tumIsler.find((j) => {
+    if (kaynak) {
+      const u = norm(kaynak);
+      if ([j.source, j.origin_url, j.meta && j.meta.url].some((x) => norm(x) === u)) return true;
+    }
+    if (stem && norm(j.title) === norm(stem)) return true;
+    return false;
+  });
+}
+
 async function gonder(dosyaMi) {
   const kaynak = $("#kaynak").value.trim();
   const dosya = $("#dosya").files[0];
   if (dosyaMi ? !dosya : !kaynak) return;
+
+  // Aynı kaynağı ikinci kez eklemeden önce uyar (yanlışlıkla tekrar yükleme).
+  const varOlan = ayniVarMi(dosyaMi ? null : kaynak, dosyaMi ? dosya.name : null);
+  if (varOlan) {
+    const durum = varOlan.status === "done" ? "hazır"
+      : varOlan.status === "error" ? "hata" : "işleniyor";
+    if (!confirm(`Bu kaynak zaten var:\n"${gorunenAd(varOlan)}" (${durum}).\n\nYine de yeniden ekleyeyim mi?`)) return;
+  }
 
   const p = $("#saglayici").value || null;
   const ses = $("#icerik") && $("#icerik").value === "1";  // sadece ses mi?

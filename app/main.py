@@ -363,6 +363,11 @@ async def upload_job(
     job_id = uuid.uuid4().hex[:12]
     dest, boyut = await _save_upload(file, job_id)
     db.create_job(job_id, str(dest), callback_url or DEFAULT_CALLBACK_URL, secilen)
+    # Orijinal dosya adını başlık yap: dosya diskte job_id'ye adlandığı için
+    # yoksa başlık "4cf24e9629fc" gibi anlamsız çıkıyordu (kütüphanede bulunmuyordu).
+    orig = Path(file.filename or "").stem.strip()
+    if orig:
+        db.update(job_id, title=orig)
     if sadece_ses:
         db.update(job_id, audio_only=1)
     await worker.enqueue(job_id)
