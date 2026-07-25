@@ -83,9 +83,13 @@ def _find_download(work: Path) -> Path:
     return max(candidates, key=lambda p: p.stat().st_size)
 
 
-async def from_url(url: str, work: Path) -> Source:
+async def from_url(url: str, work: Path, referer: str | None = None) -> Source:
+    # referer: bazı CDN'ler (Bunny/b-cdn.net gibi) yalnızca kaynak sitenin
+    # referer'ıyla verir. Verilirse yt-dlp'ye geçiyoruz — böylece m3u8 SUNUCUDA
+    # inebiliyor (lokalde yt-dlp çalıştırmaya gerek kalmıyor).
+    ref = ["--referer", referer] if referer else []
     info = json.loads(
-        await _run("yt-dlp", "--dump-single-json", "--no-playlist", "--no-warnings", url)
+        await _run("yt-dlp", *ref, "--dump-single-json", "--no-playlist", "--no-warnings", url)
     )
 
     if ENABLE_FRAMES:
@@ -96,13 +100,13 @@ async def from_url(url: str, work: Path) -> Source:
             f"best[height<={VIDEO_MAX_HEIGHT}]/best"
         )
         await _run(
-            "yt-dlp", "--no-playlist", "--no-warnings",
+            "yt-dlp", *ref, "--no-playlist", "--no-warnings",
             "-f", fmt, "--merge-output-format", "mp4",
             "-o", str(work / "download.%(ext)s"), url,
         )
     else:
         await _run(
-            "yt-dlp", "--no-playlist", "--no-warnings",
+            "yt-dlp", *ref, "--no-playlist", "--no-warnings",
             "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
             "-o", str(work / "download.%(ext)s"), url,
         )
@@ -190,7 +194,7 @@ async def from_file(path: Path, work: Path) -> Source:
     )
 
 
-async def fetch(source: str, work: Path) -> Source:
+async def fetch(source: str, work: Path, referer: str | None = None) -> Source:
     if source.startswith(("http://", "https://")):
-        return await from_url(source, work)
+        return await from_url(source, work, referer)
     return await from_file(Path(source), work)

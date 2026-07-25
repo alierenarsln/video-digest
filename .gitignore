@@ -4,3 +4,9 @@ data/
 tessdata/
 __pycache__/
 *.pyc
+
+# İndirilen/işlenen medya ve transkriptler (kullanıcı verisi, repoya girmez)
+/ders*.mp4
+/ders*.txt
+/*.mp4
+/*.wav

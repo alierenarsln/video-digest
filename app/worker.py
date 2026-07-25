@@ -88,7 +88,7 @@ async def _process(job_id: str) -> None:
             return
 
     db.update(job_id, status="running", stage="fetch")
-    source = await fetch.fetch(job["source"], work)
+    source = await fetch.fetch(job["source"], work, job.get("referer"))
 
     # Agent bir linki indirip yüklediyse dosya adı iş numarasıdır ve link
     # kaybolmuştur. Orijinali geri koyuyoruz: başlık anlamlı olsun ve özetteki

@@ -63,10 +63,15 @@ OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 8000)
 #   openrouter : tencent/hy3 — ücretsiz. Sınır: GÜNDE 50 İSTEK (kredi 0 iken;
 #                $10 kredi alınırsa 1000). 262k bağlam → büyük istek serbest,
 #                ama istek sayısı kıymetli.
-# Boş bırakılırsa öncelik: Anthropic (en iyi) > Gemini (fiyat/kalite dengesi) >
-# Groq (ücretsiz, sınırsız video). Kullanıcı zaten arayüzden iş başına seçebilir.
+# Boş bırakılırsa öncelik: Anthropic (en iyi) > Gemini (fiyat/kalite) > OpenRouter
+# (hızlı, büyük bağlam) > Groq (ücretsiz ama 8000 TPM → uzun özetlerde YAVAŞ, en son).
+# OpenRouter/Gemini anahtarı varken groq'a düşmek özetlemeyi gereksiz süründürüyordu.
+# Kullanıcı zaten arayüzden iş başına seçebilir.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "").strip().lower() or (
-    "anthropic" if ANTHROPIC_API_KEY else "gemini" if GEMINI_API_KEY else "groq"
+    "anthropic" if ANTHROPIC_API_KEY
+    else "gemini" if GEMINI_API_KEY
+    else "openrouter" if OPENROUTER_API_KEY
+    else "groq"
 )
 # Groq'ta KATI JSON şeması destekleyen model. Ölçüldü: gpt-oss-120b destekliyor,
 # llama-3.3-70b DESTEKLEMİYOR (HTTP 400). Değiştirirken bunu doğrulayın.

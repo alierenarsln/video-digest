@@ -182,6 +182,13 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .karantina .olcumler b { color: var(--text-strong); }
 
 /* özet gövdesi — okuma kolonu */
+/* opsiyonel referer alanı — gated .m3u8 için, ince/ikincil */
+.referer { width: 100%; box-sizing: border-box; margin-top: var(--space-2);
+  font: inherit; font-size: var(--fs-sm); padding: 8px 12px; border-radius: var(--radius-1);
+  border: 1px dashed var(--border-strong); background: transparent; color: var(--text-muted); }
+.referer:focus { outline: none; border-color: var(--accent); border-style: solid;
+  color: var(--text-strong); }
+
 /* kaynağa sor — dürüst sohbet */
 .sor { margin-top: var(--space-7); padding-top: var(--space-6);
   border-top: 1px solid var(--border); }
@@ -350,9 +357,12 @@ input[type=text]::placeholder { color: var(--text-faint); }
 
         <div id="panelLink">
           <div class="satir">
-            <input type="text" id="kaynak" placeholder="https://youtube.com/watch?v=…" aria-label="Bağlantı">
+            <input type="text" id="kaynak" placeholder="https://youtube.com/… ya da .m3u8 bağlantısı" aria-label="Bağlantı">
             <button class="btn" id="btn" type="button">İşle</button>
           </div>
+          <input type="text" id="referer" class="referer"
+            placeholder="site (referer) — yalnız gated .m3u8 için, örn. https://coderspace.io/"
+            aria-label="Referer (opsiyonel)">
         </div>
 
         <div id="panelDosya" style="display:none">
@@ -1120,14 +1130,16 @@ async function gonder(dosyaMi) {
       j = await yukle(dosya, p);
       sifirlaDosya();
     } else {
+      const ref = ($("#referer") && $("#referer").value.trim()) || null;
       const r = await fetch("/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: kaynak, provider: p }),
+        body: JSON.stringify({ source: kaynak, provider: p, referer: ref }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       j = await r.json();
       $("#kaynak").value = "";
+      if ($("#referer")) $("#referer").value = "";
     }
     goster(j.job_id);
   } catch (e) {

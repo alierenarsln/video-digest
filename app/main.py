@@ -53,6 +53,8 @@ class JobRequest(BaseModel):
     callback_url: str | None = None
     # Boş = sunucunun varsayılanı (.env / anahtar durumu).
     provider: str | None = None
+    # CDN (Bunny/b-cdn.net gibi) referer-gated akışlarda kaynak site. Boş = yok.
+    referer: str | None = None
 
 
 class CollectionUpdate(BaseModel):
@@ -450,6 +452,16 @@ async def health(request: Request) -> dict:
     }
 
 
+def _direkt_medya(url: str) -> bool:
+    """Sunucu bu URL'i DOĞRUDAN indirebilir mi? m3u8 / doğrudan medya dosyası ya
+    da bilinen CDN (Bunny) → evet. Bunlar YouTube'un IP-engelini yemez; yalnızca
+    YouTube gibi SAYFA linkleri agent'ı bekler."""
+    alt = url.split("?")[0].lower()
+    if alt.endswith((".m3u8", ".mp4", ".mkv", ".webm", ".mov", ".m4a", ".mp3", ".wav", ".ts")):
+        return True
+    return "b-cdn.net" in alt  # Bunny CDN — referer-gated, IP-gated DEĞİL
+
+
 @app.post("/jobs", status_code=202)
 async def create_job(req: JobRequest) -> dict:
     if not req.source.strip():
@@ -460,13 +472,17 @@ async def create_job(req: JobRequest) -> dict:
     job_id = uuid.uuid4().hex[:12]
     kaynak = req.source.strip()
     db.create_job(job_id, kaynak, req.callback_url or DEFAULT_CALLBACK_URL, secilen)
+    ref = (req.referer or "").strip() or None
+    if ref:
+        db.update(job_id, referer=ref)
 
-    # Sunucu YouTube'a erişemiyorsa link işleri kuyruğa GİRMEZ: ev makinesindeki
-    # agent onları indirip /attach ile bağlayana kadar bekler. Böylece telefondan
-    # link atıp PC açılınca işlenmesini sağlayabiliyoruz.
-    if USE_LOCAL_AGENT and kaynak.startswith(("http://", "https://")):
-        db.update(job_id, status="waiting", stage="awaiting_download")
-        return {"job_id": job_id, "status": "waiting", "provider": secilen}
+    if kaynak.startswith(("http://", "https://")):
+        # Sunucu YouTube'a erişemiyor (IP-engeli); onun için SAYFA linkleri
+        # USE_LOCAL_AGENT açıkken ev agent'ını bekler. Ama m3u8/doğrudan medya
+        # (Bunny CDN vb.) engeli yemez → SUNUCUDA iner, lokalde yt-dlp gerekmez.
+        if USE_LOCAL_AGENT and not _direkt_medya(kaynak):
+            db.update(job_id, status="waiting", stage="awaiting_download")
+            return {"job_id": job_id, "status": "waiting", "provider": secilen}
 
     await worker.enqueue(job_id)
     return {"job_id": job_id, "status": "queued", "provider": secilen}

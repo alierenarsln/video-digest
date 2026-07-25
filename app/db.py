@@ -41,7 +41,11 @@ def init() -> None:
         # büyüdükçe eski kurulumlar sessizce kırılır (SELECT/UPDATE hata verir).
         var = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
         # collection: LLM'in otomatik atadığı çalışma/konu adı (koleksiyon).
-        for ad, tanim in (("origin_url", "TEXT"), ("provider", "TEXT"), ("collection", "TEXT")):
+        # referer: CDN'den (Bunny gibi) sunucu-tarafı indirmede gereken kaynak site.
+        for ad, tanim in (
+            ("origin_url", "TEXT"), ("provider", "TEXT"),
+            ("collection", "TEXT"), ("referer", "TEXT"),
+        ):
             if ad not in var:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")
                 print(f"[db] goc: jobs.{ad} sutunu eklendi", flush=True)
