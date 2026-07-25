@@ -9,7 +9,7 @@ import shutil
 import traceback
 
 from . import db, llm, notify
-from .config import DELETE_SOURCE_AFTER_DONE, OUT_DIR, UPLOAD_DIR, WORK_DIR
+from .config import DELETE_SOURCE_AFTER_DONE, OUT_DIR, PART_SECONDS, UPLOAD_DIR, WORK_DIR
 from .pipeline import (
     document,
     fetch,
@@ -62,6 +62,136 @@ async def kurtarici(aralik: int = 60) -> None:
             print(f"[kurtarici] hata: {exc}", flush=True)
 
 
+async def _split_audio(wav: Path, part_len: float, work: Path) -> list[Path]:
+    """16kHz wav'ı ~part_len'lik parçalara böl (ffmpeg segment, pcm copy — hızlı,
+    yeniden-kodlama yok). Her parça ayrı transkript edilecek."""
+    outdir = work / "parts"
+    outdir.mkdir(parents=True, exist_ok=True)
+    await fetch._run(
+        "ffmpeg", "-nostdin", "-y", "-i", str(wav),
+        "-f", "segment", "-segment_time", f"{part_len:.3f}",
+        "-c", "copy", str(outdir / "part_%03d.wav"),
+    )
+    return sorted(outdir.glob("part_*.wav"))
+
+
+def _part_meta(source, part_len, job_id, digest, p_shots, assets_rel):
+    return {
+        **source.meta,
+        "duration": part_len,
+        "part_of": job_id,
+        "learning_type": digest.learning_type,
+        "tur": digest.tur,
+        "topics": digest.topics,
+        "sections": len(digest.sections),
+        "critic_added": digest.added_by_critic,
+        "critic_types": digest.critic_types,
+        "critic_from_screen": digest.critic_from_screen,
+        "compression": digest.compression,
+        "frames_used": sum(1 for f in p_shots if not f.quarantined),
+        "frames_from_silence": sum(
+            1 for f in p_shots if f.in_silence and not f.quarantined
+        ),
+        "quarantined": [
+            {"ts": f.ts, "conf": f.conf, "src": f"{assets_rel}/{f.path.name}"}
+            for f in p_shots if f.quarantined
+        ],
+    }
+
+
+def _birlestir(base_title: str, ozetler: list, n: int, hatalar: list) -> str:
+    """'Tüm hali': her part'ın TL;DR'ı + bölüm başlıkları tek belgede (genel bakış).
+    Detay her part'ın kendi girdisinde. Başaramayan part varsa dürüstçe söyler."""
+    out = [f"# {base_title} — Tüm hali", ""]
+    out += [f"{n} parça · her parçanın kendi ayrıntılı özeti ayrı girdide.", ""]
+    for p_title, d in ozetler:
+        out += [f"## {p_title}", ""]
+        out += [f"- {x}" for x in d.tldr]
+        basliklar = " · ".join(s.section.title for s in d.sections)
+        if basliklar:
+            out += ["", f"_Bölümler:_ {basliklar}"]
+        out += [""]
+    if hatalar:
+        out += ["## İşlenemeyen parçalar", ""]
+        out += ["Bu parçalar tamamlanamadı (sebebi yanlarında); tek tek 'tekrar dene' ile denenebilir.", ""]
+        out += [f"- **{t}** — {e}" for t, e in hatalar]
+        out += [""]
+    return "\n".join(out)
+
+
+async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None:
+    """Uzun video: sesi part'lara böl, HER PART'I BAĞIMSIZ transkript+özetle (ayrı
+    kütüphane girdisi), tüm video 'Tüm hali' birleşik belge olur. Bir part'ın
+    transkript hatası (Groq 502 gibi) diğerlerini ÖLDÜRMEZ — o part hata alır, gerisi
+    tamamlanır. Part segmentleri mutlak zamana kaydırılır (tam videoya tıklanabilir)."""
+    base_title = job.get("title") or source.title
+    provider = job.get("provider") or llm.provider()
+    origin_url = job.get("origin_url") or source.meta.get("url")
+    part_len = source.duration / n
+    db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"parça 1/{n}")
+
+    part_files = await _split_audio(source.audio_path, part_len, work)
+    n = len(part_files) or n
+    koleksiyon = None
+    ozetler: list = []
+    hatalar: list = []
+
+    for i, pf in enumerate(part_files):
+        t0 = i * part_len
+        aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
+        p_title = f"{base_title} — Part {i + 1} ({aralik})"
+        db.update(job_id, stage=f"parça {i + 1}/{n}")
+        try:
+            p_segs = await transcribe.transcribe(pf, work)
+        except Exception as exc:
+            print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
+            hatalar.append((p_title, str(exc)))
+            continue
+        # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
+        p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_segs]
+        p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
+        p_transcript = transcribe.to_timestamped_text(p_segs)
+        p_sections = await segment.split_into_sections(p_segs, p_title, p_transcript)
+        p_digest = await summarize.summarize(p_sections, p_transcript, p_shots)
+        if koleksiyon is None:
+            koleksiyon = await summarize.classify_collection(
+                base_title, p_digest.topics, db.distinct_collections()
+            )
+        p_md = render.render(
+            p_digest, p_title, part_len, source.meta,
+            assets_rel=assets_rel if p_shots else None,
+        )
+        cid = f"{job_id}p{i + 1}"
+        db.create_job(cid, job["source"], None, provider)
+        out = OUT_DIR / f"{cid}.md"
+        out.write_text(p_md, encoding="utf-8")
+        db.update(
+            cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+            origin_url=origin_url, result_path=str(out),
+            meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
+        )
+        ozetler.append((p_title, p_digest))
+        print(f"[part] {cid} bitti: {p_title}", flush=True)
+
+    # Birleşik "Tüm hali" = bu (parent) iş.
+    combined = _birlestir(base_title, ozetler, n, hatalar)
+    out = OUT_DIR / f"{job_id}.md"
+    out.write_text(combined, encoding="utf-8")
+    ilk = ozetler[0][1] if ozetler else None
+    db.update(
+        job_id, status="done", stage="done", collection=koleksiyon,
+        result_path=str(out),
+        meta={
+            **source.meta, "duration": source.duration, "parts": n,
+            "parts_failed": len(hatalar), "is_combined": True,
+            "topics": ilk.topics if ilk else [],
+            "learning_type": ilk.learning_type if ilk else "genel",
+            "tur": ilk.tur if ilk else "genel",
+        },
+    )
+    print(f"[part] {job_id} tum hali: {len(ozetler)} basarili, {len(hatalar)} hata", flush=True)
+
+
 async def _process(job_id: str) -> None:
     job = db.get(job_id)
     if job is None:
@@ -104,17 +234,8 @@ async def _process(job_id: str) -> None:
     # — job_id'yle ezmeyelim; yoksa source.title (link'te yt-dlp başlığı) kullanılır.
     db.update(job_id, title=job.get("title") or source.title)
 
-    if source.subtitles is not None:
-        # Hazır altyazı bulundu (fetch aşamasında) — Whisper'a hiç gitmiyoruz.
-        db.update(job_id, stage="subtitles")
-        segments = source.subtitles
-    else:
-        db.update(job_id, stage="transcribe")
-        segments = await transcribe.transcribe(source.audio_path, work)
-
-    # Görsel katman: sesi olan ama videosu olmayan kaynaklarda (meeting kaydı,
-    # podcast) kendiliğinden atlanır. Onarımdan ÖNCE koşar: ekran metni, ASR'ın
-    # bozduğu terim ve özel isimleri düzeltmekte kullanılıyor.
+    # Görsel katman ÖNCE: kareler transkriptten bağımsız (video'dan çıkar). Hem
+    # kısa yolda onarımda hem uzun yolda part'lara zaman-damgasıyla dağıtımda lazım.
     assets_rel = f"{job_id}_frames"
     shots: list[frames.Frame] = []
     if source.video_path is not None:
@@ -122,6 +243,22 @@ async def _process(job_id: str) -> None:
         shots = await frames.extract(
             source.video_path, source.duration, OUT_DIR / assets_rel
         )
+
+    # UZUN VIDEO: transkriptten ÖNCE part'lara böl. Her part BAĞIMSIZ transkript →
+    # bir part'ın Groq 502'si tüm işi öldürmez; tek dev transkript (chunk 25'te
+    # patlayan) yok. Altyazı varsa (tüm video için hazır) bölme yok — o yol zaten hızlı.
+    n_part = round(source.duration / PART_SECONDS) if source.duration else 0
+    if n_part >= 2 and source.subtitles is None:
+        await _process_long(job_id, job, source, shots, assets_rel, work, n_part)
+        return
+
+    if source.subtitles is not None:
+        # Hazır altyazı bulundu (fetch aşamasında) — Whisper'a hiç gitmiyoruz.
+        db.update(job_id, stage="subtitles")
+        segments = source.subtitles
+    else:
+        db.update(job_id, stage="transcribe")
+        segments = await transcribe.transcribe(source.audio_path, work)
 
     raw_transcript = transcribe.to_timestamped_text(segments)
     punct = repair.punct_density(segments)
@@ -217,6 +354,7 @@ async def _process(job_id: str) -> None:
             "transcript_path": str(transcript_path),
         },
     )
+
     shutil.rmtree(work, ignore_errors=True)
 
 

@@ -184,6 +184,11 @@ OUT_DIR = DATA_DIR / "out"
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "jobs.sqlite3"
 
+# Uzun video parçalama: süre ~PART_SECONDS'ı belirgin aşarsa video part'lara
+# bölünüp her part AYRI özetlenir (derin part özeti + ayrı kütüphane girdisi),
+# tüm video ise "Tüm hali" olarak kalır. Part sayısı = round(süre/PART_SECONDS).
+PART_SECONDS = _int("PART_SECONDS", 1800)  # 30 dk
+
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)
 TRANSCRIBE_LANGUAGE = os.environ.get("TRANSCRIBE_LANGUAGE", "").strip() or None
