@@ -43,6 +43,10 @@ Write-Host ""
 
 while ($true) {
     try {
+        # "Yasiyorum" sinyali: site "ev bilgisayari cevrimici" gostersin. Hata
+        # olursa yut - kalp atisi kritik degil, indirme akisini durdurmasin.
+        try { Invoke-RestMethod "$Sunucu/api/agent/heartbeat" -Method POST -Headers $H -TimeoutSec 15 | Out-Null } catch {}
+
         $bekleyen = Invoke-RestMethod "$Sunucu/api/pending-downloads" -Headers $H -TimeoutSec 30
 
         foreach ($is in $bekleyen) {

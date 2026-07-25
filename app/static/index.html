@@ -324,6 +324,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
   <button class="marka" id="anaSayfa" type="button" aria-label="Ana sayfa">Tanık<b>.</b></button>
   <div class="sag">
     <span class="saglik" id="saglik"></span>
+    <span class="saglik" id="agentDurum" style="display:none" title="Ev indiricisi (YouTube linkleri için)"></span>
     <button class="btn sessiz" id="kitaplikBtn" type="button">kitaplık</button>
     <button class="btn sessiz" id="tema" type="button" aria-label="Tema değiştir">tema</button>
     <form method="POST" action="/logout" style="margin:0"><button class="btn sessiz" type="submit">çıkış</button></form>
@@ -603,6 +604,20 @@ async function saglik() {
     else if (!h.ocr_ok) t += " · OCR dili eksik";
     $("#saglik").innerHTML = t;
   } catch { $("#saglik").textContent = "sunucuya ulaşılamıyor"; }
+}
+
+// Ev-agent'ı durumu: yalnız agent en az bir kez ping'lediyse göster (yerel/agent'sız
+// kullanımda gizli kalır, gürültü olmaz). Çevrimiçi=yeşil, değilse=uyarı + "PC'yi aç".
+async function agentDurum() {
+  try {
+    const s = await (await fetch("/api/agent/status")).json();
+    const el = $("#agentDurum");
+    if (!s.ever_seen) { el.style.display = "none"; return; }
+    el.style.display = "inline-flex";
+    const renk = s.online ? "var(--sig-verified)" : "var(--sig-uncertain)";
+    const metin = s.online ? "ev bilgisayarı: çevrimiçi" : "ev bilgisayarı: çevrimdışı → PC'yi aç";
+    el.innerHTML = `<span class="nokta" style="background:${renk}"></span>${esc(metin)}`;
+  } catch { /* durum alınamadıysa göstergeyi olduğu gibi bırak */ }
 }
 
 // ── liste ───────────────────────────────────────────────────────
@@ -1161,6 +1176,8 @@ $("#ipucu").textContent =
 
 saglayicilar();
 saglik();
+agentDurum();
+setInterval(agentDurum, 20000);  // ev-agent durumunu 20 sn'de bir tazele
 listele();
 setInterval(listele, 5000);
 </script>

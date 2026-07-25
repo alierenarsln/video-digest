@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 import shutil
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -253,6 +254,28 @@ async def pending_downloads() -> list[dict]:
         for j in db.list_jobs(200)
         if j["stage"] == "awaiting_download" and j["status"] == "waiting"
     ]
+
+
+# Ev-agent'ının son "yaşıyorum" sinyali. Bellekte tutuluyor — sunucu yeniden
+# başlarsa sıfırlanır, agent bir sonraki turda yine ping'ler (kalıcılık gereksiz).
+_agent_last_seen: float | None = None
+_AGENT_ONLINE_ESIK = 90  # sn: bu süre içinde ping geldiyse "çevrimiçi"
+
+
+@app.post("/api/agent/heartbeat")
+async def agent_heartbeat() -> dict:
+    """Ev-agent'ı periyodik ping'ler; site 'ev bilgisayarı çevrimiçi mi' bilsin."""
+    global _agent_last_seen
+    _agent_last_seen = time.time()
+    return {"ok": True}
+
+
+@app.get("/api/agent/status")
+async def agent_status() -> dict:
+    if _agent_last_seen is None:
+        return {"online": False, "ever_seen": False, "seconds_ago": None}
+    ago = time.time() - _agent_last_seen
+    return {"online": ago <= _AGENT_ONLINE_ESIK, "ever_seen": True, "seconds_ago": int(ago)}
 
 
 @app.post("/jobs/{job_id}/attach")
