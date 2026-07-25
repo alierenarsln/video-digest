@@ -109,10 +109,17 @@ _SYNTH_SYSTEM += language_rule()
 # başka bir yapay zekâya yapıştırılabilecek DERİNLEŞME prompt'u üretir.
 LEARNING_TYPES = ("tutorial", "kurs", "gelisim", "genel")
 
+# Görüntüleme türü (format) — learning_type'tan AYRI: kart üstünde "ne tür bir
+# kaynak" (toplantı mı, sunum mu, podcast mi...) göstermek için. Arayüz güzel
+# etikete çevirir (TUR_ETIKET). ASCII anahtar: enum'ı sağlam tutar.
+CONTENT_TYPES = ("egitim", "sunum", "toplanti", "podcast", "soylesi",
+                 "gelisim", "haber", "genel")
+
 _LEARNING_SCHEMA = {
     "type": "object",
     "properties": {
         "type": {"type": "string", "enum": list(LEARNING_TYPES)},
+        "tur": {"type": "string", "enum": list(CONTENT_TYPES)},
         "steps": {"type": "array", "items": {"type": "string"}},
         "actions": {"type": "array", "items": {"type": "string"}},
         "quiz": {
@@ -130,7 +137,7 @@ _LEARNING_SCHEMA = {
         "deepen_prompt": {"type": "string"},
         "topics": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["type", "steps", "actions", "quiz", "deepen_prompt", "topics"],
+    "required": ["type", "tur", "steps", "actions", "quiz", "deepen_prompt", "topics"],
     "additionalProperties": False,
 }
 
@@ -138,11 +145,21 @@ _LEARNING_SYSTEM = """Sana bir videonun bölüm notları veriliyor. Amacın: izl
 videoyu izledikten SONRA ne yapacağını bilsin — daha derin öğrensin, uygulasın, \
 kendini test etsin. Şunları üret:
 
-1. type: İçeriğin türünü sınıflandır:
+1. type: İçeriğin ÖĞRENME türünü sınıflandır (çıktıyı şekillendirir):
    - "tutorial": bir şeyi nasıl yapacağını adım adım gösteren (kod, tarif, kurulum...)
    - "kurs": ders/anlatım/kavram öğreten (teori, kavram, konu anlatımı)
    - "gelisim": kişisel gelişim/motivasyon/alışkanlık/tavsiye
    - "genel": yukarıdakilerin hiçbiri (haber, eğlence, vlog...)
+
+1b. tur: İçeriğin FORMATINI sınıflandır (kartta gösterilir, ayrı bir eksen):
+   - "egitim": ders/eğitim/kurs/tutorial/anlatım
+   - "sunum": konferans konuşması, slaytlı sunum, tanıtım
+   - "toplanti": toplantı/oturum kaydı (birden çok kişi, gündem, karar)
+   - "podcast": podcast/sesli program/sohbet formatı
+   - "soylesi": röportaj/söyleşi/mülakat (soru-cevap, konuk)
+   - "gelisim": kişisel gelişim/motivasyon
+   - "haber": haber/güncel/analiz
+   - "genel": hiçbirine net uymuyorsa
 
 2. steps: SADECE tutorial ise — videoda gösterilen prosedürü sıralı, uygulanabilir \
 adımlara böl (her adım tek bir eylem; komut/araç/değer varsa dahil et; ekranda \
@@ -285,6 +302,7 @@ class Digest:
     critic_from_screen: int = 0
     # --- Öğrenme sentezi: "ne dedi" değil "şimdi ne YAPACAĞIM". ---
     learning_type: str = "genel"       # tutorial | kurs | gelisim | genel
+    tur: str = "genel"                 # format: egitim|sunum|toplanti|podcast|soylesi|...
     steps: list[str] = field(default_factory=list)         # tutorial: sıralı adım
     actions: list[str] = field(default_factory=list)       # gelisim: eylem maddesi
     quiz: list[dict] = field(default_factory=list)         # kurs/tutorial: öz-test
@@ -405,9 +423,11 @@ async def _learning_synthesis(summaries: list[SectionSummary]) -> dict:
     except Exception as exc:
         print(f"[learning] atlandi: {exc}", flush=True)
         return {}
-    tur = r.get("type", "")
+    tip = r.get("type", "")
+    fmt = r.get("tur", "")
     return {
-        "type": tur if tur in LEARNING_TYPES else "genel",
+        "type": tip if tip in LEARNING_TYPES else "genel",
+        "tur": fmt if fmt in CONTENT_TYPES else "genel",
         "steps": [s.strip() for s in r.get("steps", []) if s.strip()],
         "actions": [a.strip() for a in r.get("actions", []) if a.strip()],
         "quiz": [
@@ -658,6 +678,7 @@ async def summarize(
             if s.compression is not None
         ],
         learning_type=ogrenme.get("type", "genel"),
+        tur=ogrenme.get("tur", "genel"),
         steps=ogrenme.get("steps", []),
         actions=ogrenme.get("actions", []),
         quiz=ogrenme.get("quiz", []),

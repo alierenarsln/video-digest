@@ -298,6 +298,9 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .kitap:hover { border-color: var(--border-accent); box-shadow: var(--shadow-1); }
 .kitap .ad { font-family: var(--font-serif); font-size: 16px; font-weight: var(--fw-medium);
   color: var(--text-strong); line-height: 1.3; }
+/* kaynak satırı: platform · kanal · format — ince, ikincil */
+.kitap .kaynakSat { font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--text-faint); margin-top: 3px; }
 .kitap .ust2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
 .rozet { font-family: var(--font-mono); font-size: var(--fs-micro);
@@ -894,6 +897,24 @@ $("#anaSayfa").onclick = anaSayfa;
 
 // ── kitaplık ────────────────────────────────────────────────────
 const TUR_ADI = { tutorial: "tutorial", kurs: "kurs", gelisim: "gelişim" };
+// Format etiketi (kartta "ne tür kaynak"): egitim→Eğitim, toplanti→Toplantı...
+const TUR_ETIKET = {
+  egitim: "Eğitim", sunum: "Sunum", toplanti: "Toplantı", podcast: "Podcast",
+  soylesi: "Söyleşi", gelisim: "Kişisel Gelişim", haber: "Haber", genel: "",
+};
+
+// Kaynağın platformu: URL'den türet (link yoksa yüklenen Dosya).
+function platformAd(j) {
+  const url = (j.origin_url || (j.meta && j.meta.url) || j.source || "").toLowerCase();
+  if (!/^https?:/.test(url)) return "Dosya";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "YouTube";
+  if (url.includes("coderspace.io")) return "Coderspace";
+  if (url.includes("vimeo.com")) return "Vimeo";
+  if (url.includes("udemy.com")) return "Udemy";
+  if (url.includes("b-cdn.net")) return "Video (CDN)";
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Bağlantı"; }
+}
+
 function kitapKart(j) {
   const m = j.meta || {};
   const ad = gorunenAd(j);
@@ -907,8 +928,12 @@ function kitapKart(j) {
   const rozet = tur ? `<span class="rozet ${m.learning_type}">${tur}</span>` : "";
   const konular = (m.topics || []).slice(0, 4)
     .map((t) => `<span class="konu">${esc(t)}</span>`).join("");
+  // Kaynak satırı: platform · kanal · format (hangi kaynaktan, hangi kanal, ne tür).
+  const kaynakSat = [platformAd(j), m.uploader, TUR_ETIKET[m.tur]]
+    .filter(Boolean).map(esc).join(" · ");
   return `<button class="kitap" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
+    ${kaynakSat ? `<div class="kaynakSat">${kaynakSat}</div>` : ""}
     <div class="ust2">${rozet}
       <span class="nokta" style="background:${renk}"></span>${esc(durum)}
       ${tarih ? `<span style="margin-left:auto">${esc(tarih)}</span>` : ""}</div>

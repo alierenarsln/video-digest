@@ -179,6 +179,7 @@ async def _process(job_id: str) -> None:
             "duration": source.duration,
             # Öğrenme: tür + konu etiketleri (arayüz rozeti / gruplama).
             "learning_type": digest.learning_type,
+            "tur": digest.tur,
             "topics": digest.topics,
             "sections": len(digest.sections),
             "critic_added": digest.added_by_critic,
@@ -276,6 +277,7 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
         meta={
             "kind": "document",
             "learning_type": digest.learning_type,
+            "tur": digest.tur,
             "topics": digest.topics,
             "pages": len(pages),
             "pages_read": okunan,
@@ -348,6 +350,7 @@ async def _process_text(job_id: str, path: Path, work: Path) -> None:
         meta={
             "kind": "markdown",
             "learning_type": digest.learning_type,
+            "tur": digest.tur,
             "topics": digest.topics,
             "blocks": len(pages),
             "words": kelime,
