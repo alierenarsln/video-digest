@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import secrets
 import shutil
 import uuid
@@ -7,11 +6,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, llm, worker
+from . import auth, db, llm, worker
 from .config import (
     ANTHROPIC_API_KEY,
     APP_PASSWORD,
@@ -34,18 +39,13 @@ from .pipeline import ask, frames
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-def _auth_ok(header: str | None) -> bool:
-    if not header or not header.startswith("Basic "):
-        return False
-    try:
-        raw = base64.b64decode(header[6:]).decode("utf-8")
-        user, _, password = raw.partition(":")
-    except Exception:
-        return False
-    # compare_digest: şifre karşılaştırmasını zamanlama saldırısına kapatır.
-    return secrets.compare_digest(user, APP_USER) and secrets.compare_digest(
-        password, APP_PASSWORD
-    )
+def _authed(request: Request) -> bool:
+    """İki yol da geçerli: tarayıcı oturum çerezi VEYA HTTP Basic (script/curl).
+    Basic korunuyor ki indir-yukle.ps1 / kaydet.ps1 / upload komutları kırılmasın."""
+    tok = request.cookies.get(auth.COOKIE)
+    if tok and auth.verify_token(tok):
+        return True
+    return auth.verify_basic(request.headers.get("authorization"))
 
 
 class JobRequest(BaseModel):
@@ -102,6 +102,15 @@ async def lifespan(app: FastAPI):
     ensure_dirs()
     db.init()
 
+    # Kimlik: şifreyi DB'ye (hash'li) tohumla. İLK tohumda kurtarma kodu döner —
+    # loga BİR KEZ yaz (Coolify loglarından alınır; şifre unutulursa bununla sıfırlanır).
+    kurtarma = auth.init()
+    if kurtarma:
+        print("=" * 60, flush=True)
+        print(f"[auth] KURTARMA KODU (bir kez gösterilir, kaydet): {kurtarma}", flush=True)
+        print("[auth] Şifreni unutursan /reset sayfasında bu kodla sıfırlarsın.", flush=True)
+        print("=" * 60, flush=True)
+
     # Eksik OCR dili sessizce bozuk metin üretir; açılışta yüksek sesle söyle.
     if ENABLE_FRAMES:
         ok, message = frames.check_ocr_langs()
@@ -123,31 +132,105 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="video-digest", lifespan=lifespan)
 
 
+# Kimlik gerektirmeyen yollar: sağlık, login/reset/logout ekranları ve onların
+# CSS'i (/static). /out (slayt görselleri = kullanıcı içeriği) KORUNUR.
+_MUAF = ("/health", "/login", "/reset", "/logout", "/static")
+
+
 @app.middleware("http")
 async def koruma(request: Request, call_next):
-    """APP_PASSWORD doluysa her şeyi HTTP Basic ile korur.
+    """Tarayıcı için oturum çerezi, script için HTTP Basic. İkisi de yoksa:
+    tarayıcı gezinmesini /login'e yönlendirir (popup YOK), API'ye 401 döner.
 
     Middleware olarak yazıldı çünkü /out altındaki slayt görselleri StaticFiles
-    ile servis ediliyor ve bir dependency onları kapsamazdı — özet içeriği
-    resimlerin içinde de var.
+    ile servis ediliyor ve bir dependency onları kapsamazdı.
     """
-    # /health muaf: konteyner healthcheck'i kimlik bilgisi taşıyamaz. Kimliksiz
-    # çağrıda yalnızca {"ok": true} döner, ayrıntı sızmaz (bkz. health()).
-    if request.url.path == "/health":
+    if auth.is_open() or request.url.path.startswith(_MUAF):
         return await call_next(request)
 
-    if APP_PASSWORD and not _auth_ok(request.headers.get("authorization")):
-        return Response(
-            status_code=401,
-            content="Yetkisiz",
-            headers={"WWW-Authenticate": 'Basic realm="video-digest"'},
-        )
-    return await call_next(request)
+    if _authed(request):
+        return await call_next(request)
+
+    # Kimliksiz tarayıcı gezinmesi → login sayfası. WWW-Authenticate GÖNDERMİYORUZ
+    # (yoksa tarayıcı yine popup açardı). curl zaten Basic'i baştan yolluyor.
+    if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse("/login", status_code=302)
+    return Response(status_code=401, content="Yetkisiz")
 
 
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+# ── kimlik: login / reset / logout ──────────────────────────────────────────
+@app.get("/login", include_in_schema=False)
+async def login_page(request: Request):
+    # Zaten girişliyse (ya da koruma kapalıysa) doğrudan uygulamaya.
+    if auth.is_open() or _authed(request):
+        return RedirectResponse("/", status_code=302)
+    return FileResponse(STATIC_DIR / "login.html")
+
+
+@app.post("/login", include_in_schema=False)
+async def login_submit(
+    kullanici: str = Form(...), sifre: str = Form(...), hatirla: str | None = Form(None)
+):
+    ok = secrets.compare_digest(kullanici.strip(), APP_USER) and auth.verify_password(sifre)
+    if not ok:
+        return RedirectResponse("/login?hata=1", status_code=303)
+    token, max_age = auth.make_token(bool(hatirla))
+    resp = RedirectResponse("/", status_code=303)
+    # httponly: JS okuyamaz (XSS'te çalınamaz); samesite=lax: CSRF'e makul koruma.
+    resp.set_cookie(auth.COOKIE, token, max_age=max_age, httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/logout", include_in_schema=False)
+async def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(auth.COOKIE)
+    return resp
+
+
+@app.get("/reset", include_in_schema=False)
+async def reset_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "reset.html")
+
+
+@app.post("/reset", include_in_schema=False)
+async def reset_submit(kod: str = Form(...), sifre: str = Form(...)):
+    if not auth.verify_recovery(kod):
+        return RedirectResponse("/reset?hata=1", status_code=303)
+    yeni_kod = auth.set_password(sifre)  # şifreyi değiştirir + kurtarma kodunu yeniler
+    return HTMLResponse(_reset_ok_html(yeni_kod))
+
+
+def _reset_ok_html(yeni_kod: str) -> str:
+    """Sıfırlama başarılı: YENİ kurtarma kodunu bir kez göster (eskisi kullanıldı)."""
+    return f"""<!doctype html><html lang="tr" data-theme="light"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Şifre değişti · Tanık</title><link rel="stylesheet" href="/static/ds/styles.css">
+<style>body{{background:var(--surface-app);min-height:100vh;margin:0;display:flex;
+align-items:center;justify-content:center;padding:var(--space-5)}}
+.kutu{{width:100%;max-width:400px;text-align:center}}
+.marka{{font-family:var(--font-serif);font-size:42px;font-weight:var(--fw-semibold);
+color:var(--text-strong);margin-bottom:var(--space-6)}}.marka b{{color:var(--accent)}}
+.kart{{background:var(--surface-card);border:1px solid var(--border-hair);
+border-radius:var(--radius-2);padding:var(--space-6)}}
+h1{{font-family:var(--font-serif);font-size:var(--fs-h2);margin:0 0 var(--space-3)}}
+.ipucu{{color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:var(--space-5);line-height:1.5}}
+.kod{{font-family:var(--font-mono);font-size:22px;letter-spacing:2px;color:var(--text-strong);
+background:var(--surface-sunken);border:1px dashed var(--border-strong);
+border-radius:var(--radius-1);padding:14px;margin-bottom:var(--space-5)}}
+.btn{{display:inline-block;font-weight:var(--fw-medium);padding:11px 22px;border-radius:var(--radius-1);
+background:var(--accent);color:var(--text-on-accent);text-decoration:none}}</style></head>
+<body><div class="kutu"><div class="marka">Tanık<b>.</b></div><div class="kart">
+<h1>Şifren değişti ✓</h1>
+<p class="ipucu">YENİ kurtarma kodun aşağıda. Eskisi artık geçersiz — bunu güvenli
+bir yere KAYDET, bir daha gösterilmez.</p>
+<div class="kod">{yeni_kod}</div>
+<a class="btn" href="/login">Girişe dön</a></div></div></body></html>"""
 
 
 @app.get("/api/jobs")
@@ -352,7 +435,7 @@ async def cleanup(uygula: bool = False) -> dict:
 async def health(request: Request) -> dict:
     # Bu uç korumadan muaf (healthcheck için). Kimliksiz çağrıya yapılandırma
     # ayrıntısı vermiyoruz — hangi anahtarların tanımlı olduğu dahil.
-    if APP_PASSWORD and not _auth_ok(request.headers.get("authorization")):
+    if not auth.is_open() and not _authed(request):
         return {"ok": True}
 
     ocr_ok, ocr_message = frames.check_ocr_langs() if ENABLE_FRAMES else (True, "kapalı")
