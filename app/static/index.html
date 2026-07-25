@@ -182,7 +182,12 @@ input[type=text]::placeholder { color: var(--text-faint); }
 .karantina .olcumler b { color: var(--text-strong); }
 
 /* özet gövdesi — okuma kolonu */
-/* opsiyonel referer alanı — gated .m3u8 için, ince/ikincil */
+/* gelişmiş toggle — referer'ı gizler, sade giriş için */
+.gelismisAc { background: none; border: 0; color: var(--text-faint);
+  font-size: var(--fs-sm); cursor: pointer; padding: 6px 0 0; }
+.gelismisAc:hover { color: var(--accent); }
+
+/* opsiyonel referer alanı — gated bağlantılar için, ince/ikincil */
 .referer { width: 100%; box-sizing: border-box; margin-top: var(--space-2);
   font: inherit; font-size: var(--fs-sm); padding: 8px 12px; border-radius: var(--radius-1);
   border: 1px dashed var(--border-strong); background: transparent; color: var(--text-muted); }
@@ -346,8 +351,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <section class="kolon" id="giris">
       <h1 style="font-size:var(--fs-display);max-width:16ch">Gezilemeyen bir kaynak. Dürüst bir özet.</h1>
       <p class="ipucu" style="margin:var(--space-4) 0 var(--space-6);font-size:var(--fs-body)">
-        Video, ses dosyası ya da bağlantı ver. Transkripti, ekrandan okuduğunu ve özeti
-        çıkarır — neyi kurtardığını ve neyi okuyamadığını aynı sakinlikte söyleyerek.
+        Video, ses, PDF ya da bağlantı ver — okunabilir bir özet çıkarır.
       </p>
 
       <div class="kart">
@@ -358,12 +362,13 @@ input[type=text]::placeholder { color: var(--text-faint); }
 
         <div id="panelLink">
           <div class="satir">
-            <input type="text" id="kaynak" placeholder="https://youtube.com/… ya da .m3u8 bağlantısı" aria-label="Bağlantı">
+            <input type="text" id="kaynak" placeholder="YouTube ya da video bağlantısı yapıştır" aria-label="Bağlantı">
             <button class="btn" id="btn" type="button">İşle</button>
           </div>
-          <input type="text" id="referer" class="referer"
-            placeholder="site (referer) — yalnız gated .m3u8 için, örn. https://coderspace.io/"
-            aria-label="Referer (opsiyonel)">
+          <button type="button" id="gelismisAc" class="gelismisAc">gelişmiş</button>
+          <input type="text" id="referer" class="referer" style="display:none"
+            placeholder="Kaynak site — bazı korumalı bağlantılar için (örn. coderspace.io)"
+            aria-label="Kaynak site (opsiyonel)">
         </div>
 
         <div id="panelDosya" style="display:none">
@@ -587,11 +592,26 @@ async function saglayicilar() {
   sel.innerHTML = ps.map((p) =>
     `<option value="${esc(p.id)}" ${p.varsayilan ? "selected" : ""}>${esc(p.ad)} · ${esc(p.model)}</option>`
   ).join("");
+  // Sağlayıcı jargonu (kota/bağlam açıklamaları) kaldırıldı — dropdown zaten adı
+  // söylüyor; ayrıntıyı merak eden seçeneklerin üstüne gelince (title) görür.
+  sel.title = "";
   const not = () => {
     const p = ps.find((x) => x.id === sel.value);
-    $("#saglayiciNot").textContent = p ? `+ ${p.artisi} · − ${p.eksisi}` : "";
+    sel.title = p ? `${p.artisi}\n${p.eksisi}` : "";
   };
   sel.onchange = not; not();
+}
+
+// Görünen ad: yükleme dosyası job_id'ye adlandığında başlık 12-hane hex olarak
+// sızıyor ("4cf24e9629fc") — kullanıcıya anlamsız. Böyle bir durumda ilk konuyu
+// (örn. "Python Veri Yapıları") ya da nazik bir yedek göster.
+function gorunenAd(j) {
+  const ham = (j.title || (j.source ? j.source.split(/[\\/]/).pop() : "") || "").trim();
+  if (/^[0-9a-f]{12}$/i.test(ham)) {
+    const konu = j.meta && j.meta.topics && j.meta.topics[0];
+    return konu || "İsimsiz kaynak";
+  }
+  return ham || "İsimsiz kaynak";
 }
 
 async function saglik() {
@@ -628,7 +648,7 @@ function isHtml(j) {
   const etiket = j.status === "done" ? "hazır"
     : j.status === "error" ? "hata"
     : j.status === "cancelled" ? "iptal" : asamaAdi(j.stage);
-  const ad = j.title || j.source.split(/[\\/]/).pop();
+  const ad = gorunenAd(j);
   return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
     <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}${
@@ -845,7 +865,7 @@ $("#anaSayfa").onclick = anaSayfa;
 const TUR_ADI = { tutorial: "tutorial", kurs: "kurs", gelisim: "gelişim" };
 function kitapKart(j) {
   const m = j.meta || {};
-  const ad = j.title || j.source.split(/[\\/]/).pop();
+  const ad = gorunenAd(j);
   const renk = j.status === "done" ? "var(--sig-verified)"
     : j.status === "error" ? "var(--accent)" : "var(--sig-uncertain)";
   const durum = j.status === "done" ? "hazır" : j.status === "error" ? "hata" : "işleniyor";
@@ -1170,9 +1190,15 @@ $("#btn").onclick = () => gonder(false);
 $("#btnDosya").onclick = () => gonder(true);
 $("#kaynak").onkeydown = (e) => { if (e.key === "Enter") gonder(false); };
 
-$("#ipucu").textContent =
-  "Ücretsiz modeller kullanılıyor · kotalar dar, arayüz bunu saklamaz. " +
-  "1 saatlik video 10-20 dakika sürebilir.";
+// "gelişmiş": referer alanını aç/kapa (varsayılan gizli — sade giriş).
+$("#gelismisAc").onclick = () => {
+  const r = $("#referer");
+  const acik = r.style.display !== "none";
+  r.style.display = acik ? "none" : "block";
+  $("#gelismisAc").textContent = acik ? "gelişmiş" : "gizle";
+};
+
+$("#ipucu").textContent = "Uzun videolar birkaç dakika sürebilir.";
 
 saglayicilar();
 saglik();
