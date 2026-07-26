@@ -500,6 +500,40 @@ async def classify_collection(
     return ad
 
 
+_TITLE_SYSTEM = (
+    "Sana bir videonun BÖLÜM BAŞLIKLARI ve KONULARI veriliyor. Videonun kendi "
+    "başlığı YOK (kaynak 'playlist' gibi anlamsız bir dosya adı). Bu içeriğe uygun, "
+    "KISA (en fazla 6-7 kelime), açıklayıcı bir TÜRKÇE başlık üret. Eğitim/kurs/"
+    "oturum ise bunu yansıt (ör. 'Python Veri Bilimi Kursu', 'Yapay Zeka Kariyeri "
+    "Oturumu'). Yalnızca başlığı ver: tırnak yok, 'Part'/'Bölüm'/'Tüm hali' yazma."
+)
+_TITLE_SCHEMA = {
+    "type": "object",
+    "properties": {"title": {"type": "string"}},
+    "required": ["title"],
+    "additionalProperties": False,
+}
+
+
+async def generate_title(sections: list[str], topics: list[str]) -> str:
+    """Videonun kendi başlığı anlamsızsa (m3u8='playlist') içerikten kısa, açıklayıcı
+    bir başlık üretir. Düşerse boş döner (çağıran kaynak başlığını korur)."""
+    user = (
+        "BÖLÜM BAŞLIKLARI:\n"
+        + "\n".join(f"- {s}" for s in sections[:40] if s)
+        + f"\n\nKONULAR: {', '.join(dict.fromkeys(topics[:25])) or '(yok)'}"
+    )
+    try:
+        r = await complete_json(
+            system=_TITLE_SYSTEM, user=user, schema=_TITLE_SCHEMA,
+            effort="low", max_tokens=120,
+        )
+    except Exception as exc:
+        print(f"[title] atlandi: {exc}", flush=True)
+        return ""
+    return (r.get("title") or "").strip().strip('"').strip()
+
+
 async def _critic_one(s: SectionSummary) -> int:
     """Tek bölümü kendi kaynağıyla karşılaştırır.
 

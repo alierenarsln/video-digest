@@ -201,6 +201,32 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     ozetler = [(t, d) for (s, _i, t, d) in sonuclar if s == "ok"]
     hatalar = [(t, e) for (s, _i, t, e) in sonuclar if s == "hata"]
 
+    # Kaynak başlığı anlamsızsa (m3u8 → "playlist" gibi) içerikten BAŞLIK üret ve hem
+    # parent'a hem TÜM parçalara uygula — kütüphanede hangi videoya ait olduğu görünsün
+    # ("playlist — Part 1" değil "Veri Bilimi Kursu — Part 1"). Koleksiyonu da iyi
+    # başlık + gerçek konularla yeniden sınıfla (ilk sınıflama "playlist" ile kördü).
+    KOTU_BASLIK = {"", "playlist", "index", "master", "chunklist", "media", "video", "stream"}
+    if base_title.strip().lower() in KOTU_BASLIK and ozetler:
+        tum_bolumler = [s.section.title for _t, d in ozetler for s in d.sections]
+        tum_konular = [t for _t, d in ozetler for t in d.topics]
+        uretilen = await summarize.generate_title(tum_bolumler, tum_konular)
+        if uretilen:
+            koleksiyon = await summarize.classify_collection(
+                uretilen, tum_konular, db.distinct_collections()
+            )
+            print(f"[title] '{base_title}' -> '{uretilen}' | koleksiyon '{koleksiyon}'", flush=True)
+            base_title = uretilen
+            for (st, i, _pt, _d) in sonuclar:
+                if st != "ok":
+                    continue
+                t0 = i * part_len
+                aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
+                db.update(
+                    f"{job_id}p{i + 1}",
+                    title=f"{base_title} — Part {i + 1} ({aralik})",
+                    collection=koleksiyon,
+                )
+
     # Birleşik "Tüm hali" = bu (parent) iş.
     combined = _birlestir(base_title, ozetler, n, hatalar)
     out = OUT_DIR / f"{job_id}.md"
@@ -208,6 +234,7 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     ilk = ozetler[0][1] if ozetler else None
     db.update(
         job_id, status="done", stage="done", collection=koleksiyon,
+        title=f"{base_title} — Tüm hali",
         result_path=str(out),
         meta={
             **source.meta, "duration": source.duration, "parts": n,
