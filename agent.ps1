@@ -25,6 +25,24 @@ Set-Location $PSScriptRoot
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
             [Environment]::GetEnvironmentVariable("Path", "User")
 
+# TEK-INSTANCE KILIDI: iki agent ayni anda calisirsa (iki logon / elle baslatma)
+# ayni isi kapip faster-whisper'i birbirinin uzerine kosuyorlar; biri olunce
+# transkript yarim kaliyor ve is sessizce takiliyor (canli olarak yasandi). Global
+# mutex ikinci kopyayi aninda cikartir; kilit surec omru boyunca tutulur (degisken
+# yasadikca), surec olunce OS otomatik birakir.
+$script:_agentMutex = New-Object System.Threading.Mutex($false, "Global\TanikEvAgent")
+try {
+    $gotLock = $script:_agentMutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    # Onceki agent temiz kapanmadan olmus (kilidi birakmadan). Kilit yine de bize
+    # gecti; guvenle devam ediyoruz (yoksa acilista cokerdi).
+    $gotLock = $true
+}
+if (-not $gotLock) {
+    Write-Host "Zaten calisan bir agent var - bu kopya cikiyor (cift-instance onlendi)." -ForegroundColor Yellow
+    exit 0
+}
+
 if (-not $Sunucu) { throw "Sunucu adresi yok: `$env:VIDEO_DIGEST_URL ayarlayin." }
 if (-not $Sifre)  { throw "Sifre yok: `$env:VIDEO_DIGEST_PASSWORD ayarlayin." }
 $Sunucu = $Sunucu.TrimEnd("/")
