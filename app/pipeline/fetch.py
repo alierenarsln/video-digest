@@ -171,15 +171,11 @@ async def from_file(path: Path, work: Path, audio_only: bool = False) -> Source:
         shutil.copy2(path, local)
 
     await _require_audio(local)
-    audio = work / "audio.wav"
-    await _to_wav(local, audio)
-    # audio_only: yüklenen dosyada görüntü olsa bile OCR'ı atla (kullanıcı istedi).
-    video = local if (ENABLE_FRAMES and not audio_only and await _has_stream(local, "v")) else None
 
-    # Ev agent'ı linki indirirken altyazıyı da çekmiş olabilir; videonun yanına
-    # <ad>.subs.json3 olarak bırakıyor. Sunucu linki hiç görmediği için altyazıyı
-    # kendisi bulamaz — bu olmazsa elle yazılmış altyazının kalite ve kota
-    # avantajı kaybolur, her şey Whisper'a düşer.
+    # Ev agent'ı videonun yanına <ad>.subs.json3 (yerel transkript / YouTube altyazı)
+    # bırakmış olabilir. Varsa ONU kullan — VE bu durumda sesi WAV'a ÇEVİRME: transkript
+    # hazır, audio_path kullanılmıyor; 6 saatlik videoda bu ~10-15 dk gereksiz ffmpeg.
+    # O yüzden sidecar'ı WAV çıkarmadan ÖNCE kontrol ediyoruz.
     subs: list[Segment] | None = None
     sub_meta: dict = {}
     yan = path.parent / f"{path.stem}.subs.json3"
@@ -188,19 +184,27 @@ async def from_file(path: Path, work: Path, audio_only: bool = False) -> Source:
             subs = subtitles.parse_json3(yan)
             sub_meta = {"subtitle_lang": "agent", "subtitle_auto": False}
             print(
-                f"[fetch] agent'in getirdigi altyazi kullaniliyor ({len(subs)} satir)"
-                f" - transkript adimi atlanacak",
+                f"[fetch] agent altyazisi kullaniliyor ({len(subs)} satir) - "
+                f"transkript VE ses-cikarma atlanacak",
                 flush=True,
             )
         except Exception as exc:
             print(f"[fetch] yandaki altyazi okunamadi, Whisper'a donuluyor: {exc}", flush=True)
+
+    if subs is None:
+        audio = work / "audio.wav"
+        await _to_wav(local, audio)
+    else:
+        audio = local  # kullanılmayacak (subtitles yolu) — WAV çıkarılmadı
+    # audio_only: yüklenen dosyada görüntü olsa bile OCR'ı atla (kullanıcı istedi).
+    video = local if (ENABLE_FRAMES and not audio_only and await _has_stream(local, "v")) else None
 
     return Source(
         audio_path=audio,
         video_path=video,
         subtitles=subs,
         title=path.stem,
-        duration=await _probe_duration(audio),
+        duration=await _probe_duration(local),
         meta={"local_path": str(path), **sub_meta},
     )
 
