@@ -1035,7 +1035,10 @@ async function kitaplikGoster() {
   const altStil = "display:block;width:100%;text-align:left;padding:7px 10px;margin:3px 0;" +
     "background:var(--surface-sunken);border:1px solid var(--border-hair);" +
     "border-radius:var(--radius-1);color:var(--text-strong);cursor:pointer;font-size:var(--fs-sm)";
-  let html = "";
+  // Anlamsız ("playlist") başlıkları içerikten toplu düzeltmek için tek buton.
+  let html = `<div style="margin-bottom:var(--space-4);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button id="backfillBtn" class="btn sessiz" type="button">🪄 Başlıkları düzelt</button>
+    <span id="backfillNot" class="ipucu"></span></div>`;
   for (const [k, grp] of koll) {
     const adet = grp.tekil.length + grp.video.length;
     let kartlar = grp.tekil.map(kitapKart).join("");
@@ -1046,11 +1049,27 @@ async function kitaplikGoster() {
         ic.push(`<button class="altKitap" data-id="${g.parent.id}" type="button" style="${altStil}"><b>Tüm hali</b> — genel bakış</button>`);
       for (const p of parts)
         ic.push(`<button class="altKitap" data-id="${p.id}" type="button" style="${altStil}">${esc(p.title || "Part")}</button>`);
-      kartlar += `<div class="videoGrup">
+      // Grup kartını tekil kartlar gibi zenginleştir: tür rozeti, kaynak, tarih, konular.
+      const pj = g.parent || parts[0] || {};
+      const pm = pj.meta || {};
+      const rozet = TUR_ADI[pm.learning_type] ? `<span class="rozet ${pm.learning_type}">${TUR_ADI[pm.learning_type]}</span>` : "";
+      const tarih = pj.created_at ? new Date(pj.created_at * 1000).toLocaleDateString("tr-TR", { day: "numeric", month: "short" }) : "";
+      const kaynakSat = [platformAd(pj), TUR_ETIKET[pm.tur]].filter(Boolean).map(esc).join(" · ");
+      const konuSet = [];
+      for (const p of parts) for (const t of ((p.meta || {}).topics || [])) if (t && !konuSet.includes(t)) konuSet.push(t);
+      for (const t of (pm.topics || [])) if (t && !konuSet.includes(t)) konuSet.push(t);
+      const konular = konuSet.slice(0, 5).map((t) => `<span class="konu">${esc(t)}</span>`).join("");
+      kartlar += `<div class="videoGrup" style="position:relative">
         <button class="kitap videoBas" type="button" data-pid="${pid}">
           <div class="ad">🗂 ${esc(_grupAd(g))}</div>
-          <div class="ust2"><span>${parts.length} parça</span><span class="acKapa" style="margin-left:auto">aç ▾</span></div>
+          ${kaynakSat ? `<div class="kaynakSat">${kaynakSat}</div>` : ""}
+          <div class="ust2">${rozet}<span>${parts.length} parça</span>
+            ${tarih ? `<span>· ${esc(tarih)}</span>` : ""}
+            <span class="acKapa" style="margin-left:auto">aç ▾</span></div>
+          ${konular ? `<div class="konular">${konular}</div>` : ""}
         </button>
+        <span class="duzenle" data-pid="${pid}" data-ad="${encodeURIComponent(_grupAd(g))}" title="başlığı düzenle"
+          style="position:absolute;top:9px;right:11px;cursor:pointer;opacity:.55;font-size:1.15em;z-index:2">✎</span>
         <div class="videoParts" style="display:none;margin:4px 0 0 8px;padding-left:10px;border-left:2px solid var(--border-hair)">${ic.join("")}</div>
       </div>`;
     }
@@ -1058,7 +1077,7 @@ async function kitaplikGoster() {
       `<span class="say">${adet} içerik</span></div><div class="kartlar">${kartlar}</div></div>`;
   }
   const el = $("#kitaplikIcerik");
-  el.innerHTML = html || `<div class="bos">Henüz üretilmiş bir şey yok.</div>`;
+  el.innerHTML = html;
   el.querySelectorAll(".videoBas").forEach((b) => b.onclick = () => {
     const p = b.parentElement.querySelector(".videoParts");
     const acik = p.style.display !== "none";
@@ -1066,6 +1085,28 @@ async function kitaplikGoster() {
     const t = b.querySelector(".acKapa");
     if (t) t.textContent = acik ? "aç ▾" : "kapat ▴";
   });
+  // ✎ başlık düzenle: grubu (parent + tüm parçalar) yeniden adlandır.
+  el.querySelectorAll(".duzenle").forEach((e) => e.onclick = async (ev) => {
+    ev.stopPropagation();
+    const eski = decodeURIComponent(e.dataset.ad || "");
+    const yeni = prompt("Yeni video başlığı:", eski);
+    if (!yeni || !yeni.trim() || yeni.trim() === eski) return;
+    await fetch(`/jobs/${e.dataset.pid}/title`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: yeni.trim() }),
+    });
+    kitaplikGoster();
+  });
+  const bf = $("#backfillBtn");
+  if (bf) bf.onclick = async () => {
+    bf.disabled = true; $("#backfillNot").textContent = "başlıklar içerikten üretiliyor…";
+    try {
+      const r = await (await fetch("/api/backfill-titles", { method: "POST" })).json();
+      $("#backfillNot").textContent = r.yenilenen ? `✓ ${r.yenilenen} video başlığı düzeltildi` : "düzeltilecek başlık yok";
+      if (r.yenilenen) { bf.disabled = false; return kitaplikGoster(); }
+    } catch { $("#backfillNot").textContent = "hata — tekrar dene"; }
+    bf.disabled = false;
+  };
   el.querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => goster(b.dataset.id));
 }
 $("#kitaplikBtn").onclick = kitaplikGoster;

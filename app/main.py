@@ -38,7 +38,7 @@ from .config import (
     ensure_dirs,
     provider_available,
 )
-from .pipeline import ask, frames
+from .pipeline import ask, frames, summarize
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -70,6 +70,10 @@ class JobRequest(BaseModel):
 
 class CollectionUpdate(BaseModel):
     collection: str
+
+
+class TitleUpdate(BaseModel):
+    title: str
 
 
 class Question(BaseModel):
@@ -459,6 +463,83 @@ async def set_collection(job_id: str, req: CollectionUpdate) -> dict:
 @app.get("/api/collections")
 async def collections() -> list[str]:
     return db.distinct_collections()
+
+
+# ── başlık: anlamsız ("playlist") başlıkları düzelt + elle yeniden adlandır ──────
+_GENERIK_BASLIK = {"", "playlist", "index", "master", "chunklist", "media", "video", "stream"}
+
+
+def _baz(title: str) -> str:
+    """'X — Tüm hali' / 'X — Part 3 (..)' → 'X' (video başlığının çekirdeği)."""
+    t = title or ""
+    return t.rsplit(" — ", 1)[0].strip() if " — " in t else t.strip()
+
+
+def _parcalari(parent_id: str, hepsi: list[dict]) -> list[dict]:
+    return [p for p in hepsi if (p.get("meta") or {}).get("part_of") == parent_id]
+
+
+def _grubu_adlandir(parent_id: str, parts: list[dict], baz: str, kol: str | None) -> None:
+    """Video-grubunu yeniden adlandır: parent '{baz} — Tüm hali', her parça
+    '{baz} — Part N (aralık)' — aralık ekini KORU. kol verilirse koleksiyonu da yaz."""
+    pupd = {"title": f"{baz} — Tüm hali"}
+    if kol is not None:
+        pupd["collection"] = kol
+    db.update(parent_id, **pupd)
+    for p in parts:
+        eski = p.get("title") or ""
+        son = eski.rsplit(" — ", 1)[-1] if " — " in eski else "Part"
+        upd = {"title": f"{baz} — {son}"}
+        if kol is not None:
+            upd["collection"] = kol
+        db.update(p["id"], **upd)
+
+
+@app.post("/api/backfill-titles")
+async def backfill_titles() -> dict:
+    """Mevcut 'playlist' gibi anlamsız başlıklı video-gruplarına içerikten başlık üretir
+    (tek seferlik). Başlık üretimi eklenmeden önce işlenmiş videolar için."""
+    hepsi = db.list_jobs(1000)
+    yenilenen = []
+    for j in hepsi:
+        m = j.get("meta") or {}
+        if not m.get("is_combined") or _baz(j.get("title") or "").lower() not in _GENERIK_BASLIK:
+            continue
+        parts = _parcalari(j["id"], hepsi)
+        konular = []
+        for p in parts:
+            konular += (p.get("meta") or {}).get("topics") or []
+        konular += m.get("topics") or []
+        konular = list(dict.fromkeys(t for t in konular if t))
+        if not konular:
+            continue
+        llm.set_provider(j.get("provider") or llm.provider())
+        yeni = await summarize.generate_title([], konular)
+        if not yeni:
+            continue
+        kol = await summarize.classify_collection(yeni, konular, db.distinct_collections())
+        _grubu_adlandir(j["id"], parts, yeni, kol)
+        yenilenen.append(yeni)
+    return {"yenilenen": len(yenilenen), "basliklar": yenilenen}
+
+
+@app.post("/jobs/{job_id}/title")
+async def set_title(job_id: str, req: TitleUpdate) -> dict:
+    """Başlığı elle değiştir. Video-grubu (parent ya da parça) ise TÜM grubu yeniden
+    adlandırır (base + parçalar, aralık korunur); tekil işse yalnız onu."""
+    job = db.get(job_id)
+    if job is None:
+        raise HTTPException(404, "iş bulunamadı")
+    yeni = req.title.strip()
+    if not yeni:
+        raise HTTPException(400, "başlık boş olamaz")
+    m = job.get("meta") or {}
+    if m.get("is_combined") or m.get("part_of"):
+        pid = job_id if m.get("is_combined") else m["part_of"]
+        _grubu_adlandir(pid, _parcalari(pid, db.list_jobs(1000)), yeni, None)
+    else:
+        db.update(job_id, title=yeni)
+    return {"ok": True, "title": yeni}
 
 
 @app.delete("/jobs/{job_id}")
