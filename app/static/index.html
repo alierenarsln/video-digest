@@ -921,7 +921,21 @@ function ekran(hangi) {
   $("#kitaplik").style.display = hangi === "kitaplik" ? "block" : "none";
 }
 
+// Uygulama-içi gezinme geçmişi: SPA olduğu için ekran geçişleri URL'ye
+// yazılmıyordu → tarayıcının GERİ tuşu uygulama içinde değil site DIŞINA atıyordu.
+// Her geçişi history'ye yazıyoruz; geri tuşunda (popstate) state'ten ekranı geri
+// kuruyoruz. _geriDonuyor: popstate'in tetiklediği render tekrar pushState yapıp
+// döngü oluşturmasın diye kapı.
+let _geriDonuyor = false;
+function _durumYaz(view, id) {
+  if (_geriDonuyor) return;
+  const url = view === "kitaplik" ? "#kitaplik"
+            : (view === "icerik" && id) ? "#is=" + id : "#";
+  history.pushState({ view, id: id || null }, "", url);
+}
+
 function anaSayfa() {
+  _durumYaz("giris");
   secili = null;
   clearInterval(zamanlayici);
   ekran("giris");
@@ -1007,6 +1021,7 @@ const _grupAd = (g) => {
 const _partNo = (pid, j) => parseInt(j.id.slice(pid.length + 1), 10) || 0;
 
 async function kitaplikGoster() {
+  _durumYaz("kitaplik");
   ekran("kitaplik");
   const isler = await (await fetch("/api/jobs")).json();
   const { videolar, uye } = _videoGruplari(isler);
@@ -1056,6 +1071,7 @@ async function kitaplikGoster() {
 $("#kitaplikBtn").onclick = kitaplikGoster;
 
 async function goster(id) {
+  _durumYaz("icerik", id);
   secili = id;
   clearInterval(zamanlayici);
   ekran("icerik");
@@ -1411,6 +1427,19 @@ kullanimGuncelle();
 setInterval(kullanimGuncelle, 60000);  // kullanım barını dakikada bir tazele
 listele();
 setInterval(listele, 5000);
+
+// GERİ/İLERİ tuşu: uygulama içinde gezin (site dışına atma). popstate'te state'ten
+// ekranı geri kur; _geriDonuyor bu render'ın tekrar pushState yapmasını engeller.
+window.addEventListener("popstate", (e) => {
+  const s = e.state || { view: "giris", id: null };
+  _geriDonuyor = true;
+  if (s.view === "kitaplik") kitaplikGoster();
+  else if (s.view === "icerik" && s.id) goster(s.id);
+  else anaSayfa();
+  _geriDonuyor = false;
+});
+// İlk giriş = geçmişin tabanı (buradan geri = siteden çıkış, doğru davranış).
+history.replaceState({ view: "giris", id: null }, "", "#");
 </script>
 </body>
 </html>
