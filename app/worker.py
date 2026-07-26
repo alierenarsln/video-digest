@@ -138,8 +138,16 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     part_len = source.duration / n
     db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"0/{n} parça bitti")
 
-    part_files = await _split_audio(source.audio_path, part_len, work)
-    n = len(part_files) or n
+    # Altyazı hazırsa (yerel-transkript json3 / YouTube) parçayı yeniden transkript
+    # ETME — hazır segmentleri zamana göre DİLİMLE (split-after). Yoksa (sunucu Groq)
+    # parça sesini böl + ayrı transkript et (split-before, 502 izolasyonu). İkisinde de
+    # her parça AYRI özetlenir → 6 saatlik metin tek LLM çağrısında max_tokens'ı taşırmaz.
+    hazir = source.subtitles is not None
+    if hazir:
+        part_files = [None] * n
+    else:
+        part_files = await _split_audio(source.audio_path, part_len, work)
+        n = len(part_files) or n
     # Koleksiyonu başlıktan BİR KEZ belirle (paralel part'larda yarış olmasın).
     koleksiyon = await summarize.classify_collection(base_title, [], db.distinct_collections())
 
@@ -153,13 +161,19 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
         aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
         p_title = f"{base_title} — Part {i + 1} ({aralik})"
         async with sem:
-            try:
-                p_segs = await transcribe.transcribe(pf, work)
-            except Exception as exc:
-                print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
-                return ("hata", i, p_title, _hata_acikla(exc))
-            # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
-            p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_segs]
+            if hazir:
+                # Hazır altyazıyı bu parçanın aralığına göre dilimle (zaman zaten mutlak).
+                p_segs = [s for s in source.subtitles if t0 <= s.start < t0 + part_len]
+                if not p_segs:
+                    return ("hata", i, p_title, "Bu parçada altyazı segmenti yok (boş aralık).")
+            else:
+                try:
+                    p_raw = await transcribe.transcribe(pf, work)
+                except Exception as exc:
+                    print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
+                    return ("hata", i, p_title, _hata_acikla(exc))
+                # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
+                p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_raw]
             p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
             p_transcript = transcribe.to_timestamped_text(p_segs)
             p_sections = await segment.split_into_sections(p_segs, p_title, p_transcript)
@@ -262,7 +276,11 @@ async def _process(job_id: str) -> None:
     # bir part'ın Groq 502'si tüm işi öldürmez; tek dev transkript (chunk 25'te
     # patlayan) yok. Altyazı varsa (tüm video için hazır) bölme yok — o yol zaten hızlı.
     n_part = round(source.duration / PART_SECONDS) if source.duration else 0
-    if n_part >= 2 and source.subtitles is None:
+    if n_part >= 2:
+        # Uzun video → HER ZAMAN parça parça (altyazı hazır olsa bile). Tek dev
+        # özet 6 saatlik metinde max_tokens'ı taşırıyordu ("Yanıt kesildi"); parça
+        # başına özet her LLM çağrısını ~30dk'ya sınırlar. _process_long altyazı
+        # hazırsa sesi yeniden transkript etmez, hazır segmentleri zamana böler.
         await _process_long(job_id, job, source, shots, assets_rel, work, n_part)
         return
 
