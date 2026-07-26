@@ -884,7 +884,16 @@ function defterHtml(j) {
       </div>
     </div>`).join("") : "";
 
-  return `<div class="kart vurgu" style="padding:0">
+  const indirSecenek = [["html", "UI görünümü (.html)"], ["md", "Markdown (.md)"], ["txt", "Düz metin (.txt)"]];
+  return `<div class="satir disaAktarGizle" style="justify-content:flex-end;margin-bottom:var(--space-3)">
+    <div style="position:relative">
+      <button class="btn sessiz" id="indirBtn" type="button">⭳ İndir ▾</button>
+      <div id="indirListe" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:200px;overflow:hidden;background:var(--surface-card);border:1px solid var(--border-hair);border-radius:var(--radius-1);box-shadow:0 6px 22px rgba(0,0,0,.25)">
+        ${indirSecenek.map(([f, l]) => `<button class="indirSec" data-f="${f}" type="button" style="display:block;width:100%;text-align:left;padding:10px 14px;background:none;border:none;color:var(--text-strong);cursor:pointer;font-size:var(--fs-sm)">${l}</button>`).join("")}
+      </div>
+    </div>
+  </div>
+  <div class="kart vurgu" style="padding:0">
     <button class="defterBas" id="defterBas" type="button" aria-expanded="false">
       <span class="im" style="color:var(--sig-verified);font-family:var(--font-mono)">✓</span>
       <span class="defterOlcum">${olcum.map(([v, l], n) =>
@@ -910,6 +919,58 @@ function defterHtml(j) {
       </div>
     </div>
   </div>`;
+}
+
+// ── dışa aktar (indir): UI görünümü (.html gömülü CSS) · markdown · düz metin ──
+function _indirAd(j) {
+  const t = (j.title || "ozet").normalize("NFKD").replace(/[^\p{L}\p{N}\-_ ]/gu, "")
+    .trim().replace(/\s+/g, "_").slice(0, 60);
+  return t || "ozet";
+}
+function _blobIndir(icerik, ad, tip) {
+  const b = new Blob([icerik], { type: tip });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement("a");
+  a.href = u; a.download = ad; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 1500);
+}
+async function _mdMetni(id) { return await (await fetch(`/jobs/${id}/markdown`)).text(); }
+
+async function indirFormat(j, fmt) {
+  const ad = _indirAd(j);
+  if (fmt === "md") {
+    _blobIndir(await _mdMetni(j.id), ad + ".md", "text/markdown;charset=utf-8");
+  } else if (fmt === "txt") {
+    const s = await _mdMetni(j.id);
+    const txt = s.replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1").replace(/^\s*[-*]\s+/gm, "• ")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`([^`]+)`/g, "$1");
+    _blobIndir(txt, ad + ".txt", "text/plain;charset=utf-8");
+  } else {
+    await _indirUiHtml(j, ad);
+  }
+}
+
+// UI görünümü: uygulamanın CSS'ini (ds token'ları + inline <style>) GÖMER, künyeyi
+// açık gösterir, etkileşimli/eylem butonlarını gizler → tek dosya, internetsiz açılır.
+async function _indirUiHtml(j, ad) {
+  const dsFiles = ["/static/ds/styles.css", "/static/ds/tokens/fonts.css", "/static/ds/tokens/colors.css",
+    "/static/ds/tokens/typography.css", "/static/ds/tokens/spacing.css", "/static/ds/tokens/radius.css",
+    "/static/ds/tokens/elevation.css", "/static/ds/tokens/motion.css", "/static/ds/tokens/base.css"];
+  const ds = (await Promise.all(dsFiles.map((u) => fetch(u).then((r) => r.ok ? r.text() : "").catch(() => "")))).join("\n");
+  const inline = [...document.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+  const css = (ds + "\n" + inline).replace(/@import[^;]+;/g, "");  // kırık göreli @import'ları at
+  const kunye = ($("#durum") || {}).innerHTML || "";
+  const govde = ($("#ozet") || {}).innerHTML || "";
+  const ekstra = `body{background:var(--surface-app,#faf8f4);color:var(--text-strong,#141414);max-width:880px;margin:0 auto;padding:36px 22px}
+    .disaAktarGizle,#defterAc,.defterAc,#kolDegistir,#sil,.kopyaBtn{display:none!important}
+    #defterIc,.defterIc{display:block!important}`;
+  const doc = `<!doctype html><html lang="tr" data-theme="light"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(j.title || "Özet")} · Tanık</title>
+<style>${css}
+${ekstra}</style></head>
+<body>${kunye}<div class="ozet">${govde}</div></body></html>`;
+  _blobIndir(doc, ad + ".html", "text/html;charset=utf-8");
 }
 
 // ── çizim ───────────────────────────────────────────────────────
@@ -1201,6 +1262,15 @@ async function ciz() {
     $("#defterAc").textContent = acik ? "aç" : "kapat";
   };
   $("#sil").onclick = () => silJob(j.id, j.title || j.id);
+  // İndir dropdown: UI görünümü (.html) / markdown / düz metin.
+  const iBtn = $("#indirBtn"), iListe = $("#indirListe");
+  if (iBtn && iListe) {
+    iBtn.onclick = () => { iListe.style.display = iListe.style.display === "block" ? "none" : "block"; };
+    document.querySelectorAll(".indirSec").forEach((b) => b.onclick = async () => {
+      iListe.style.display = "none";
+      try { await indirFormat(j, b.dataset.f); } catch (e) { alert("İndirilemedi: " + (e.message || e)); }
+    });
+  }
   $("#kolDegistir").onclick = async () => {
     // Mevcut çalışmaları öner ki tutarlı ad kullanılsın (aynı ad = aynı grup).
     const mevcut = await (await fetch("/api/collections")).json().catch(() => []);
