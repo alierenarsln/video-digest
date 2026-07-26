@@ -977,24 +977,81 @@ function kitapKart(j) {
   </button>`;
 }
 
+// Bir videonun 12 parçası + "Tüm hali" düz liste olarak dağılınca hangi part hangi
+// videoya ait belli olmuyordu. Çözüm: parçaları (meta.part_of) + parent'ı
+// (meta.is_combined) TEK katlanabilir gruba topla → koleksiyon > video > parçalar.
+function _videoGruplari(isler) {
+  const videolar = new Map();   // parentId -> {parent, parts:[]}
+  const uye = new Set();        // gruba giren iş id'leri (tekil listeye girmesin)
+  for (const j of isler) {
+    const pid = j.meta && j.meta.part_of;
+    if (pid) {
+      if (!videolar.has(pid)) videolar.set(pid, { parent: null, parts: [] });
+      videolar.get(pid).parts.push(j);
+      uye.add(j.id);
+    }
+  }
+  for (const j of isler) {
+    if (j.meta && j.meta.is_combined && videolar.has(j.id)) {
+      videolar.get(j.id).parent = j;
+      uye.add(j.id);
+    }
+  }
+  return { videolar, uye };
+}
+const _grupKol = (g) => ((g.parent || g.parts[0] || {}).collection || "").trim() || "— atanmamış —";
+const _grupAd = (g) => {
+  const t = ((g.parent || {}).title || (g.parts[0] || {}).title || "video");
+  return t.replace(/\s*—\s*(Tüm hali|Part\s*\d.*)$/i, "").trim() || t;
+};
+const _partNo = (pid, j) => parseInt(j.id.slice(pid.length + 1), 10) || 0;
+
 async function kitaplikGoster() {
   ekran("kitaplik");
   const isler = await (await fetch("/api/jobs")).json();
-  const gruplar = new Map();
-  for (const j of isler) {
-    const k = (j.collection || "").trim() || "— atanmamış —";
-    if (!gruplar.has(k)) gruplar.set(k, []);
-    gruplar.get(k).push(j);
-  }
+  const { videolar, uye } = _videoGruplari(isler);
+
+  // Koleksiyona göre üst-grupla: tekil işler + video-grupları.
+  const koll = new Map();
+  const ekle = (k, tip, v) => { if (!koll.has(k)) koll.set(k, { tekil: [], video: [] }); koll.get(k)[tip].push(v); };
+  for (const j of isler) if (!uye.has(j.id)) ekle((j.collection || "").trim() || "— atanmamış —", "tekil", j);
+  for (const [pid, g] of videolar) ekle(_grupKol(g), "video", { pid, g });
+
+  const altStil = "display:block;width:100%;text-align:left;padding:7px 10px;margin:3px 0;" +
+    "background:var(--surface-sunken);border:1px solid var(--border-hair);" +
+    "border-radius:var(--radius-1);color:var(--text-strong);cursor:pointer;font-size:var(--fs-sm)";
   let html = "";
-  for (const [k, list] of gruplar) {
+  for (const [k, grp] of koll) {
+    const adet = grp.tekil.length + grp.video.length;
+    let kartlar = grp.tekil.map(kitapKart).join("");
+    for (const { pid, g } of grp.video) {
+      const parts = g.parts.slice().sort((a, b) => _partNo(pid, a) - _partNo(pid, b));
+      const ic = [];
+      if (g.parent)
+        ic.push(`<button class="altKitap" data-id="${g.parent.id}" type="button" style="${altStil}"><b>Tüm hali</b> — genel bakış</button>`);
+      for (const p of parts)
+        ic.push(`<button class="altKitap" data-id="${p.id}" type="button" style="${altStil}">${esc(p.title || "Part")}</button>`);
+      kartlar += `<div class="videoGrup">
+        <button class="kitap videoBas" type="button" data-pid="${pid}">
+          <div class="ad">🗂 ${esc(_grupAd(g))}</div>
+          <div class="ust2"><span>${parts.length} parça</span><span class="acKapa" style="margin-left:auto">aç ▾</span></div>
+        </button>
+        <div class="videoParts" style="display:none;margin:4px 0 0 8px;padding-left:10px;border-left:2px solid var(--border-hair)">${ic.join("")}</div>
+      </div>`;
+    }
     html += `<div class="kolBolum"><div class="bas"><h2>${esc(k)}</h2>` +
-      `<span class="say">${list.length} içerik</span></div>` +
-      `<div class="kartlar">${list.map(kitapKart).join("")}</div></div>`;
+      `<span class="say">${adet} içerik</span></div><div class="kartlar">${kartlar}</div></div>`;
   }
   const el = $("#kitaplikIcerik");
   el.innerHTML = html || `<div class="bos">Henüz üretilmiş bir şey yok.</div>`;
-  el.querySelectorAll(".kitap").forEach((b) => b.onclick = () => goster(b.dataset.id));
+  el.querySelectorAll(".videoBas").forEach((b) => b.onclick = () => {
+    const p = b.parentElement.querySelector(".videoParts");
+    const acik = p.style.display !== "none";
+    p.style.display = acik ? "none" : "block";
+    const t = b.querySelector(".acKapa");
+    if (t) t.textContent = acik ? "aç ▾" : "kapat ▴";
+  });
+  el.querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => goster(b.dataset.id));
 }
 $("#kitaplikBtn").onclick = kitaplikGoster;
 
