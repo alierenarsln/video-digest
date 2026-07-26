@@ -951,26 +951,49 @@ async function indirFormat(j, fmt) {
   }
 }
 
-// UI görünümü: uygulamanın CSS'ini (ds token'ları + inline <style>) GÖMER, künyeyi
-// açık gösterir, etkileşimli/eylem butonlarını gizler → tek dosya, internetsiz açılır.
-async function _indirUiHtml(j, ad) {
+// UI görünümü: uygulamanın CSS'ini (ds token'ları + inline <style>) GÖMER →
+// tek dosya, internetsiz açılır, uygulama gibi görünür.
+async function _uiCss() {
   const dsFiles = ["/static/ds/styles.css", "/static/ds/tokens/fonts.css", "/static/ds/tokens/colors.css",
     "/static/ds/tokens/typography.css", "/static/ds/tokens/spacing.css", "/static/ds/tokens/radius.css",
     "/static/ds/tokens/elevation.css", "/static/ds/tokens/motion.css", "/static/ds/tokens/base.css"];
   const ds = (await Promise.all(dsFiles.map((u) => fetch(u).then((r) => r.ok ? r.text() : "").catch(() => "")))).join("\n");
   const inline = [...document.querySelectorAll("style")].map((s) => s.textContent).join("\n");
-  const css = (ds + "\n" + inline).replace(/@import[^;]+;/g, "");  // kırık göreli @import'ları at
-  const kunye = ($("#durum") || {}).innerHTML || "";
-  const govde = ($("#ozet") || {}).innerHTML || "";
+  return (ds + "\n" + inline).replace(/@import[^;]+;/g, "");  // kırık göreli @import'ları at
+}
+function _uiDoc(baslik, bodyHtml, css) {
   const ekstra = `body{background:var(--surface-app,#faf8f4);color:var(--text-strong,#141414);max-width:880px;margin:0 auto;padding:36px 22px}
     .disaAktarGizle,#defterAc,.defterAc,#kolDegistir,#sil,.kopyaBtn{display:none!important}
     #defterIc,.defterIc{display:block!important}`;
-  const doc = `<!doctype html><html lang="tr" data-theme="light"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(j.title || "Özet")} · Tanık</title>
+  return `<!doctype html><html lang="tr" data-theme="light"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(baslik)} · Tanık</title>
 <style>${css}
 ${ekstra}</style></head>
-<body>${kunye}<div class="ozet">${govde}</div></body></html>`;
-  _blobIndir(doc, ad + ".html", "text/html;charset=utf-8");
+<body>${bodyHtml}</body></html>`;
+}
+async function _indirUiHtml(j, ad) {
+  const css = await _uiCss();
+  const body = (($("#durum") || {}).innerHTML || "") + `<div class="ozet">${($("#ozet") || {}).innerHTML || ""}</div>`;
+  _blobIndir(_uiDoc(j.title || "Özet", body, css), ad + ".html", "text/html;charset=utf-8");
+}
+
+// Bir videonun TÜM parçalarını (Tüm hali + her parça) TEK dosyada birleştir.
+async function indirGrupBirlesik(baslik, idler, fmt) {
+  const ad = _indirAd({ title: baslik });
+  const mdler = await Promise.all(idler.map((id) => _mdMetni(id)));
+  if (fmt === "html") {
+    const css = await _uiCss();
+    const body = `<h1>${esc(baslik)}</h1>` + mdler.map((m0, i) => `<div class="ozet">${md(m0, idler[i])}</div>`)
+      .join('<hr style="margin:44px 0;border:none;border-top:2px solid var(--border-hair)">');
+    _blobIndir(_uiDoc(baslik, body, css), ad + "_hepsi.html", "text/html;charset=utf-8");
+  } else if (fmt === "md") {
+    _blobIndir(mdler.join("\n\n\n---\n\n\n"), ad + "_hepsi.md", "text/markdown;charset=utf-8");
+  } else {
+    const txt = mdler.join("\n\n\n").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1").replace(/^\s*[-*]\s+/gm, "• ")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`([^`]+)`/g, "$1");
+    _blobIndir(txt, ad + "_hepsi.txt", "text/plain;charset=utf-8");
+  }
 }
 
 // ── çizim ───────────────────────────────────────────────────────
@@ -1096,9 +1119,11 @@ async function kitaplikGoster() {
   const altStil = "display:block;width:100%;text-align:left;padding:7px 10px;margin:3px 0;" +
     "background:var(--surface-sunken);border:1px solid var(--border-hair);" +
     "border-radius:var(--radius-1);color:var(--text-strong);cursor:pointer;font-size:var(--fs-sm)";
-  // Anlamsız ("playlist") başlıkları içerikten toplu düzeltmek için tek buton.
+  // Anlamsız ("playlist") başlıkları düzelt + tüm kütüphaneyi zip indir.
+  const grupData = new Map();  // pid -> {baslik, idler} — grup birleşik indirme için
   let html = `<div style="margin-bottom:var(--space-4);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <button id="backfillBtn" class="btn sessiz" type="button">🪄 Başlıkları düzelt</button>
+    <a class="btn sessiz" href="/api/export-zip" download="tanik-kutuphane.zip" style="text-decoration:none">⭳ Kütüphaneyi indir (.zip)</a>
     <span id="backfillNot" class="ipucu"></span></div>`;
   for (const [k, grp] of koll) {
     const adet = grp.tekil.length + grp.video.length;
@@ -1110,6 +1135,12 @@ async function kitaplikGoster() {
         ic.push(`<button class="altKitap" data-id="${g.parent.id}" type="button" style="${altStil}"><b>Tüm hali</b> — genel bakış</button>`);
       for (const p of parts)
         ic.push(`<button class="altKitap" data-id="${p.id}" type="button" style="${altStil}">${esc(p.title || "Part")}</button>`);
+      // Videonun TÜM parçalarını (Tüm hali + parçalar) tek dosyada indir (format seç).
+      grupData.set(pid, { baslik: _grupAd(g), idler: (g.parent ? [g.parent.id] : []).concat(parts.map((p) => p.id)) });
+      ic.unshift(`<div class="grupIndir" style="display:flex;gap:6px;align-items:center;margin:2px 0 9px;font-size:var(--fs-sm)">
+        <span style="opacity:.7">⭳ Tümü tek dosya:</span>
+        ${[["html", "UI"], ["md", "MD"], ["txt", "TXT"]].map(([f, l]) => `<button class="grupIndirSec" data-pid="${pid}" data-f="${f}" type="button" style="padding:3px 10px;background:var(--surface-sunken);border:1px solid var(--border-hair);border-radius:var(--radius-1);color:var(--text-strong);cursor:pointer">${l}</button>`).join("")}
+      </div>`);
       // Grup kartını tekil kartlar gibi zenginleştir: tür rozeti, kaynak, tarih, konular.
       const pj = g.parent || parts[0] || {};
       const pm = pj.meta || {};
@@ -1157,6 +1188,14 @@ async function kitaplikGoster() {
       body: JSON.stringify({ title: yeni.trim() }),
     });
     kitaplikGoster();
+  });
+  // ⭳ Tümü tek dosya: video-grubunun Tüm hali + parçalarını birleştirip indir.
+  el.querySelectorAll(".grupIndirSec").forEach((b) => b.onclick = async (ev) => {
+    ev.stopPropagation();
+    const d = grupData.get(b.dataset.pid);
+    if (!d) return;
+    try { await indirGrupBirlesik(d.baslik, d.idler, b.dataset.f); }
+    catch (e) { alert("İndirilemedi: " + (e.message || e)); }
   });
   const bf = $("#backfillBtn");
   if (bf) bf.onclick = async () => {

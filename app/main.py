@@ -1,8 +1,11 @@
 import asyncio
+import io
+import re
 import secrets
 import shutil
 import time
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -540,6 +543,43 @@ async def set_title(job_id: str, req: TitleUpdate) -> dict:
     else:
         db.update(job_id, title=yeni)
     return {"ok": True, "title": yeni}
+
+
+def _guvenli_ad(s: str, uzun: int = 80) -> str:
+    """Dosya/klasör adı için güvenli: geçersiz karakterleri boşluğa çevir."""
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (s or "").strip())
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:uzun] or "adsiz"
+
+
+@app.get("/api/export-zip")
+async def export_zip() -> Response:
+    """Tüm hazır özetleri tek .zip'te ver — koleksiyona göre klasörlenmiş .md dosyaları."""
+    buf = io.BytesIO()
+    seen: set[str] = set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for j in db.list_jobs(2000):
+            if j["status"] != "done":
+                continue
+            # list_jobs result_path döndürmüyor; markdown her zaman OUT_DIR/{id}.md.
+            p = OUT_DIR / f"{j['id']}.md"
+            if not p.exists():
+                continue
+            kol = _guvenli_ad(j.get("collection") or "atanmamis", 60)
+            ad = _guvenli_ad(j.get("title") or j["id"])
+            yol = f"{kol}/{ad}.md"
+            if yol in seen:  # aynı ad → id ekle (çakışma)
+                yol = f"{kol}/{ad} ({j['id'][:6]}).md"
+            seen.add(yol)
+            try:
+                z.writestr(yol, p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    buf.seek(0)
+    return Response(
+        buf.getvalue(), media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="tanik-kutuphane.zip"'},
+    )
 
 
 @app.delete("/jobs/{job_id}")
