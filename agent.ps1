@@ -91,35 +91,16 @@ while ($true) {
 
             $mb = [math]::Round($dosya.Length / 1MB, 1)
 
-            # Altyazi kaynagi iki yol: (a) YEREL TRANSKRIPT istendiyse videoyu bu
-            # PC'de faster-whisper ile yaz; (b) degilse YouTube'un elle yazilmis
-            # altyazisini cek. Ikisi de json3 -> sunucu altyazi sayip Groq'u ATLAR.
+            # Agent zaten dosyayi indirdi. Transkript onceligi:
+            #  1) (yerel SEÇİLMEDİYSE) YouTube'un ELLE yazilmis altyazisi — bedava,
+            #     Whisper'dan iyi, Groq kotasi harcamaz.
+            #  2) Yoksa (ya da "yerel" secildiyse) CASCADE (yerel-transkript.py:
+            #     Groq-parallel + yerel faster-whisper yedek). Sunucunun YAVAS tek-Groq
+            #     transkriptine ASLA dusmuyoruz (38dk video orada 15dk+ suruyordu).
             $altyazi = $null
-            if ($is.transkript -eq "yerel") {
-                # Groq 502 yok: transkript PC'de kosar (uzun videolar icin secildi).
-                # yerel-transkript.py --json3: zaman damgali json3 (damgalar tiklanir).
-                Write-Host "[$($is.id)] indi ($mb MB) -> yerel transkript basliyor (faster-whisper/CPU, uzun surebilir)..." -ForegroundColor Cyan
-                $j3 = Join-Path $tmp "t.json3"
-                # try/catch SART: python.exe yoksa & cagrisi ErrorActionPreference=Stop
-                # altinda TERMINATING throw eder; sarmazsak dis catch'e sicrar, foreach
-                # kirilir (diger bekleyen isler atlanir). Sararak: yerel transkript
-                # basarisizsa altyazi=null kalir -> video altyazisiz yuklenir -> sunucu
-                # Groq'a duser (zarif degradasyon, sonsuz retry yok).
-                try {
-                    & ".\.venv\Scripts\python.exe" "yerel-transkript.py" $dosya.FullName "--json3" $j3
-                } catch {
-                    Write-Host "[$($is.id)] yerel transkript calistirilamadi: $($_.Exception.Message)" -ForegroundColor Yellow
-                }
-                if (Test-Path $j3) {
-                    $altyazi = Get-Item $j3
-                    Write-Host "[$($is.id)] yerel transkript bitti, yukleniyor..." -ForegroundColor Green
-                } else {
-                    Write-Host "[$($is.id)] yerel transkript URETILEMEDI -> sunucuda Groq'a dusecek" -ForegroundColor Yellow
-                }
-            } else {
-                # Sunucu linki HIC gormedigi icin altyaziyi kendisi bulamaz. Yalnizca
-                # videonun KENDI dilindeki altyazi (sunucudaki politikayla ayni); dil
-                # belirtmezsek makine cevirisi gelebilir - ceviri uzerine ceviri olur.
+            if ($is.transkript -ne "yerel") {
+                # Yalnizca videonun KENDI dilindeki altyazi (dil belirtmezsek makine
+                # cevirisi gelebilir - ceviri uzerine ceviri).
                 $dil = (& $ytdlp @refArgs --no-playlist --no-warnings --skip-download `
                             --print "%(language)s" $is.source 2>$null | Select-Object -First 1)
                 if ($dil -and $dil -ne "NA") {
@@ -129,10 +110,25 @@ while ($true) {
                     $altyazi = Get-ChildItem "$tmp\s*.json3" -ErrorAction SilentlyContinue |
                                Select-Object -First 1
                 }
-                if ($altyazi) {
-                    Write-Host "[$($is.id)] indi ($mb MB) + elle yazilmis altyazi, yukleniyor..." -ForegroundColor DarkGray
+                if ($altyazi) { Write-Host "[$($is.id)] indi ($mb MB) + elle yazilmis altyazi, yukleniyor..." -ForegroundColor DarkGray }
+            }
+            if (-not $altyazi) {
+                # CASCADE: 38dk video ~saniyeler (Groq-parallel, 2 anahtar); Groq dususe
+                # her parca yerel faster-whisper'a duser. json3 -> sunucu Groq'u ATLAR.
+                Write-Host "[$($is.id)] indi ($mb MB) -> cascade transkript (Groq-parallel + yerel yedek)..." -ForegroundColor Cyan
+                $j3 = Join-Path $tmp "t.json3"
+                # try/catch SART: python.exe yoksa & cagrisi terminating throw eder;
+                # sarmazsak dis catch'e sicrar ve foreach kirilir (diger isler atlanir).
+                try {
+                    & ".\.venv\Scripts\python.exe" "yerel-transkript.py" $dosya.FullName "--json3" $j3
+                } catch {
+                    Write-Host "[$($is.id)] cascade calistirilamadi: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+                if (Test-Path $j3) {
+                    $altyazi = Get-Item $j3
+                    Write-Host "[$($is.id)] cascade bitti, yukleniyor..." -ForegroundColor Green
                 } else {
-                    Write-Host "[$($is.id)] indi ($mb MB), altyazi yok -> Whisper, yukleniyor..." -ForegroundColor DarkGray
+                    Write-Host "[$($is.id)] cascade URETILEMEDI -> sunucuda Groq'a dusecek" -ForegroundColor Yellow
                 }
             }
 
