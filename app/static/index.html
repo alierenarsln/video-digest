@@ -353,6 +353,16 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <div style="margin-top:var(--space-5)">
       <button class="btn sessiz" id="temizlik" type="button" style="width:100%">öksüz dosyaları tara</button>
       <div class="ipucu" id="bakimSonuc" style="margin-top:6px"></div>
+      <button class="btn sessiz" id="kullaniciAc" type="button" style="width:100%;margin-top:8px">kullanıcılar</button>
+      <div id="kullaniciPanel" style="display:none;margin-top:8px">
+        <div id="kullaniciListe" class="ipucu" style="margin-bottom:6px"></div>
+        <input id="yeniKullanici" placeholder="kullanıcı adı" autocomplete="off"
+          style="width:100%;padding:6px 8px;margin-bottom:4px;background:var(--surface-sunken);border:1px solid var(--border-hair);border-radius:var(--radius-1);color:var(--text-strong);box-sizing:border-box">
+        <input id="yeniSifre" type="text" placeholder="şifre" autocomplete="off"
+          style="width:100%;padding:6px 8px;margin-bottom:6px;background:var(--surface-sunken);border:1px solid var(--border-hair);border-radius:var(--radius-1);color:var(--text-strong);box-sizing:border-box">
+        <button class="btn sessiz" id="kullaniciEkle" type="button" style="width:100%">ekle</button>
+        <div class="ipucu" id="kullaniciNot" style="margin-top:6px"></div>
+      </div>
     </div>
   </aside>
 
@@ -1566,6 +1576,47 @@ if ($("#transkriptKaynak")) {
     }
   };
 }
+
+// ── kullanıcı yönetimi (çok-kullanıcı giriş; kütüphane paylaşımlı) ──
+async function kullaniciYukle() {
+  const el = $("#kullaniciListe");
+  if (!el) return;
+  try {
+    const d = await (await fetch("/api/users")).json();
+    const satir = (u, silinebilir) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 0">
+      <span>${esc(u)}</span>${silinebilir
+        ? `<button class="kullaniciSil" data-u="${esc(u)}" type="button" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:var(--fs-sm)">sil</button>`
+        : `<span style="opacity:.5">admin</span>`}</div>`;
+    el.innerHTML = satir(d.admin, false) + (d.users || []).map((u) => satir(u, true)).join("");
+    el.querySelectorAll(".kullaniciSil").forEach((b) => b.onclick = async () => {
+      if (!confirm(`"${b.dataset.u}" kullanıcısı silinsin mi?`)) return;
+      await fetch(`/api/users/${encodeURIComponent(b.dataset.u)}`, { method: "DELETE" });
+      kullaniciYukle();
+    });
+  } catch { el.textContent = "kullanıcılar alınamadı"; }
+}
+if ($("#kullaniciAc")) $("#kullaniciAc").onclick = () => {
+  const p = $("#kullaniciPanel");
+  const acik = p.style.display !== "none";
+  p.style.display = acik ? "none" : "block";
+  if (!acik) kullaniciYukle();
+};
+if ($("#kullaniciEkle")) $("#kullaniciEkle").onclick = async () => {
+  const u = $("#yeniKullanici").value.trim(), s = $("#yeniSifre").value;
+  const not = $("#kullaniciNot");
+  if (!u || !s) { not.textContent = "ad ve şifre gerekli"; return; }
+  const r = await fetch("/api/users", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: u, password: s }),
+  });
+  if (r.ok) {
+    not.textContent = `✓ "${u}" eklendi`;
+    $("#yeniKullanici").value = ""; $("#yeniSifre").value = "";
+    kullaniciYukle();
+  } else {
+    not.textContent = ((await r.json().catch(() => ({}))).detail) || "eklenemedi";
+  }
+};
 
 $("#ipucu").textContent = "Uzun videolar birkaç dakika sürebilir.";
 

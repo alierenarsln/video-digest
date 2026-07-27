@@ -63,6 +63,13 @@ def init() -> str | None:
             " recovery_hash TEXT NOT NULL, recovery_salt TEXT NOT NULL,"
             " secret TEXT NOT NULL)"
         )
+        # Ek kullanıcılar (admin dışında) — çok-kullanıcı girişi. Kütüphane paylaşımlı
+        # (iş başına kullanıcı yok); bu yalnızca ayrı giriş bilgisi verir.
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS users ("
+            " username TEXT PRIMARY KEY, pass_hash TEXT NOT NULL,"
+            " pass_salt TEXT NOT NULL, created_at REAL NOT NULL)"
+        )
         row = c.execute("SELECT secret FROM auth WHERE id=1").fetchone()
         if row:
             _secret_cache = row["secret"]
@@ -124,6 +131,50 @@ def set_password(new_pw: str) -> str:
     return rcode
 
 
+# --- ek kullanıcılar (çok-kullanıcı giriş; kütüphane PAYLAŞIMLI) ---
+def add_user(username: str, pw: str) -> bool:
+    u = (username or "").strip()
+    if not u or not pw or u.lower() == (APP_USER or "").strip().lower():
+        return False  # boş ya da admin ile çakışan ad reddedilir
+    psalt = _salt()
+    with _conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO users (username,pass_hash,pass_salt,created_at)"
+            " VALUES (?,?,?,?)",
+            (u, _hash(pw, psalt), psalt, time.time()),
+        )
+    return True
+
+
+def remove_user(username: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM users WHERE username=?", ((username or "").strip(),))
+
+
+def list_users() -> list[str]:
+    with _conn() as c:
+        rows = c.execute("SELECT username FROM users ORDER BY created_at").fetchall()
+    return [r["username"] for r in rows]
+
+
+def verify_user(username: str, pw: str) -> bool:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT pass_hash, pass_salt FROM users WHERE username=?", ((username or "").strip(),)
+        ).fetchone()
+    if not row:
+        return False
+    return hmac.compare_digest(_hash(pw, row["pass_salt"]), row["pass_hash"])
+
+
+def verify_login(username: str, pw: str) -> bool:
+    """Admin (env APP_USER + auth tablosu) VEYA users tablosundaki ek kullanıcı."""
+    u = (username or "").strip()
+    if secrets.compare_digest(u, APP_USER) and verify_password(pw):
+        return True
+    return verify_user(u, pw)
+
+
 # --- oturum çerezi (imzalı) ---
 def make_token(remember: bool) -> tuple[str, int | None]:
     """(token, cookie_max_age) döner. max_age None = oturumluk çerez."""
@@ -155,4 +206,4 @@ def verify_basic(header: str | None) -> bool:
         user, _, pw = base64.b64decode(header[6:]).decode("utf-8").partition(":")
     except Exception:
         return False
-    return secrets.compare_digest(user, APP_USER) and verify_password(pw)
+    return verify_login(user, pw)

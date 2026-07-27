@@ -79,6 +79,11 @@ class TitleUpdate(BaseModel):
     title: str
 
 
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+
 class Question(BaseModel):
     question: str
     # Takip soruları için önceki tur(lar): [{"soru","cevap"}]. Sunucu durum
@@ -196,8 +201,7 @@ async def login_page(request: Request):
 async def login_submit(
     kullanici: str = Form(...), sifre: str = Form(...), hatirla: str | None = Form(None)
 ):
-    ok = secrets.compare_digest(kullanici.strip(), APP_USER) and auth.verify_password(sifre)
-    if not ok:
+    if not auth.verify_login(kullanici, sifre):
         return RedirectResponse("/login?hata=1", status_code=303)
     token, max_age = auth.make_token(bool(hatirla))
     resp = RedirectResponse("/", status_code=303)
@@ -580,6 +584,25 @@ async def export_zip() -> Response:
         buf.getvalue(), media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="tanik-kutuphane.zip"'},
     )
+
+
+# ── kullanıcılar (çok-kullanıcı giriş; kütüphane paylaşımlı) ──────────────────
+@app.get("/api/users")
+async def get_users() -> dict:
+    return {"admin": APP_USER, "users": auth.list_users()}
+
+
+@app.post("/api/users")
+async def create_user(req: UserCreate) -> dict:
+    if not auth.add_user(req.username, req.password):
+        raise HTTPException(400, "geçersiz: ad boş, admin ile aynı, ya da şifre boş")
+    return {"ok": True, "username": req.username.strip()}
+
+
+@app.delete("/api/users/{username}")
+async def delete_user(username: str) -> dict:
+    auth.remove_user(username)
+    return {"ok": True}
 
 
 @app.delete("/jobs/{job_id}")
