@@ -192,6 +192,11 @@ PART_SECONDS = _int("PART_SECONDS", 1800)  # 30 dk
 # (GROQ_CONCURRENCY) sıralanır → Groq'la kazanç sınırlı (özetleme örtüşür); yerel
 # transkriptte tam paralellik. 3 makul.
 PART_CONCURRENCY = _int("PART_CONCURRENCY", 3)
+# Taranmış PDF'te her sayfa OCR edilir (300 DPI render + Tesseract, düşük güvende
+# 4-açı yeniden deneme) → yüzlerce sayfalık PDF SAATLERCE sürer ve tek-işçi
+# kuyruğunu bloklar. Üst sınır: bundan çok sayfalıysa ilk MAX_PDF_PAGES işlenir,
+# özet "ilk N (PDF M sayfa)" der. Gerekirse env'den artırılır.
+MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 200)
 
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)

@@ -12,6 +12,7 @@ import traceback
 from . import db, llm, notify
 from .config import (
     DELETE_SOURCE_AFTER_DONE,
+    MAX_PDF_PAGES,
     OUT_DIR,
     PART_CONCURRENCY,
     PART_SECONDS,
@@ -432,9 +433,18 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     db.update(job_id, status="running", stage="pages", title=title)
 
     assets_rel = f"{job_id}_pages"
+    # Taranmış PDF sayfa sayfa OCR → saatlerce sürebilir; arayüz 'sayfa N/M' görsün
+    # (yoksa 'asıldı' sanılıyor) ve MAX_PDF_PAGES'i aşan kısmı işleme (kuyruk bloku).
+    durum = {"toplam": 0, "islenecek": 0}
+
+    def _ilerleme(okunan, islenecek, toplam):
+        durum["toplam"], durum["islenecek"] = toplam, islenecek
+        db.update(job_id, stage=f"pages:{okunan}/{islenecek}")
+
     pages = await asyncio.to_thread(
-        document.extract, pdf, OUT_DIR / assets_rel, assets_rel
+        document.extract, pdf, OUT_DIR / assets_rel, assets_rel, _ilerleme, MAX_PDF_PAGES
     )
+    sinirli = 0 < durum["islenecek"] < durum["toplam"]
     segments = document.to_segments(pages)
     if not segments:
         raise RuntimeError(
@@ -460,6 +470,14 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
 
     db.update(job_id, stage="render")
     markdown = render.render_document(digest, title, pages, assets_rel)
+    if sinirli:
+        # Sessizce kırpmak ürünün DÜRÜSTLÜK tezine aykırı — özetin başında söyle.
+        markdown = (
+            f"> ⚠️ Bu PDF **{durum['toplam']} sayfa**; işlem süresi için yalnız "
+            f"**ilk {durum['islenecek']} sayfa** özetlendi. Tamamı için PDF'i bölüp "
+            f"ayrı ayrı yükleyebilir ya da (sunucu env) `MAX_PDF_PAGES` değerini "
+            f"artırabilirsin.\n\n"
+        ) + markdown
     out_path = OUT_DIR / f"{job_id}.md"
     out_path.write_text(markdown, encoding="utf-8")
 
@@ -477,6 +495,8 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
             "tur": digest.tur,
             "topics": digest.topics,
             "pages": len(pages),
+            "pdf_toplam_sayfa": durum["toplam"] or len(pages),
+            "pdf_sinirli": sinirli,
             "pages_read": okunan,
             "pages_text_layer": sum(1 for p in pages if p.source == "metin-katmani"),
             "pages_ocr": sum(1 for p in pages if p.source == "ocr" and not p.quarantined),

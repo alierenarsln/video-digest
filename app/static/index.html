@@ -470,8 +470,12 @@ const ASAMALAR = [
   ["render",                    "Markdown yazılıyor"],
 ];
 const asamaAdi = (stage) => {
-  const bulunan = ASAMALAR.find(([k]) => k.split("|").includes(stage));
-  return bulunan ? bulunan[1] : stage;
+  // "pages:45/200" gibi ilerlemeli aşama: taban ("pages") roadmap'e eşlensin,
+  // detay ("45/200") etikete "— 45/200 sayfa" olarak eklensin.
+  const [taban, detay] = String(stage || "").split(":");
+  const bulunan = ASAMALAR.find(([k]) => k.split("|").includes(taban));
+  const ad = bulunan ? bulunan[1] : (stage || "");
+  return detay ? `${ad} — ${detay} sayfa` : ad;
 };
 
 let secili = null, zamanlayici = null, sonListe = null;
@@ -763,7 +767,7 @@ async function listele() {
 }
 
 function asamaHtml(job) {
-  const i = ASAMALAR.findIndex(([k]) => k.split("|").includes(job.stage));
+  const i = ASAMALAR.findIndex(([k]) => k.split("|").includes(String(job.stage || "").split(":")[0]));
   return ASAMALAR.map(([, ad], n) => {
     const sinif = n < i ? "bitti" : n === i ? "aktif" : "bekleyen";
     const im = n < i ? "✓" : n === i ? "●" : "○";

@@ -76,14 +76,28 @@ def _sayfa_goruntu(doc: "fitz.Document", i: int, dpi: int = 300) -> Image.Image:
     return Image.open(io.BytesIO(pix.tobytes("png")))
 
 
-def extract(pdf: Path, out_dir: Path, assets_rel: str) -> list[Page]:
-    """Her sayfa: önce metin katmanı, boş/çöpse OCR (onar→ölç→karantina)."""
+def extract(pdf: Path, out_dir: Path, assets_rel: str, ilerleme=None,
+            max_sayfa: int | None = None) -> list[Page]:
+    """Her sayfa: önce metin katmanı, boş/çöpse OCR (onar→ölç→karantina).
+
+    ilerleme(okunan, islenecek, toplam): her sayfada çağrılır (arayüz 'sayfa N/M'
+    göstersin — taranmış PDF saatlerce sürebiliyor, ilerleme görünmezse 'asıldı'
+    sanılıyor). max_sayfa: bundan çoksa yalnız ilk N işlenir (saatlerce OCR +
+    kuyruk bloku olmasın); çağıran özete 'ilk N (PDF M sayfa)' notu koyar.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     reader = PdfReader(str(pdf))
     doc = fitz.open(str(pdf))
     pages: list[Page] = []
+    toplam = len(reader.pages)
+    n = min(toplam, max_sayfa) if max_sayfa else toplam
 
-    for i in range(len(reader.pages)):
+    for i in range(n):
+        if ilerleme:
+            try:
+                ilerleme(i + 1, n, toplam)
+            except Exception:
+                pass
         try:
             ham = (reader.pages[i].extract_text() or "").strip()
         except Exception:
