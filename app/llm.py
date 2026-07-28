@@ -253,6 +253,14 @@ async def _openrouter_json(
                 raise LLMError(f"OpenRouter: {str(data['error'])[:300]}")
             choice = data["choices"][0]
             if choice.get("finish_reason") == "length":
+                # Kesilme ölümcül DEĞİL: hemen aşağıdaki boş/bozuk JSON dalı gibi
+                # yeniden denenir. Tek bir kesilme bütün işi (saatlerce süren bir
+                # koşuyu) çöpe atıyordu. Her denemede bütçeyi kısıp modeli daha
+                # derli toplu yanıt vermeye zorluyoruz; son denemede pes ediyoruz.
+                if attempt < 4:
+                    payload["max_tokens"] = max(1500, int(payload["max_tokens"] * 0.7))
+                    last = f"kesildi (finish_reason=length), max_tokens={payload['max_tokens']}"
+                    continue
                 raise LLMError("Yanıt kesildi — max_tokens yetmedi.")
 
             # Ücretsiz model çağrıların ~1/3'ünde BOŞ ya da yarım JSON döndürüyor

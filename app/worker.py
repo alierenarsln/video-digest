@@ -439,35 +439,43 @@ async def _process_document_long(
             return None
         p_title = f"{base_title} — Part {i + 1} (s.{p_pages[0].number}-{p_pages[-1].number})"
         async with sem:
-            p_segs = document.to_segments(p_pages)
-            if not p_segs:
-                return ("hata", i, p_title, "Bu parçada okunabilir sayfa yok (taranmış/karantina).")
-            p_tr = transcribe.to_timestamped_text(p_segs)
-            p_sec = await segment.split_into_sections(p_segs, p_title, p_tr)
-            p_dig = await summarize.summarize(p_sec, p_tr, [])
-            p_md = render.render_document(p_dig, p_title, p_pages, assets_rel)
-            cid = f"{job_id}p{i + 1}"
-            db.create_job(cid, job["source"], None, provider)
-            (OUT_DIR / f"{cid}.md").write_text(p_md, encoding="utf-8")
-            (OUT_DIR / f"{cid}.transcript.txt").write_text(p_tr, encoding="utf-8")
-            db.update(
-                cid, status="done", stage="done", title=p_title, collection=koleksiyon,
-                result_path=str(OUT_DIR / f"{cid}.md"),
-                meta={
-                    "kind": "document", "part_of": job_id,
-                    "learning_type": p_dig.learning_type, "tur": p_dig.tur,
-                    "topics": p_dig.topics, "pages": len(p_pages),
-                    "sections": len(p_dig.sections), "critic_added": p_dig.added_by_critic,
-                    "critic_types": p_dig.critic_types, "compression": p_dig.compression,
-                    "transcript_path": str(OUT_DIR / f"{cid}.transcript.txt"),
-                },
-            )
-            biten[0] += 1
-            db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
-            print(f"[belge-part] {cid} bitti: {p_title}", flush=True)
-            return ("ok", i, p_title, p_dig)
+            try:
+                p_segs = document.to_segments(p_pages)
+                if not p_segs:
+                    return ("hata", i, p_title, "Bu parçada okunabilir sayfa yok (taranmış/karantina).")
+                p_tr = transcribe.to_timestamped_text(p_segs)
+                p_sec = await segment.split_into_sections(p_segs, p_title, p_tr)
+                p_dig = await summarize.summarize(p_sec, p_tr, [])
+                p_md = render.render_document(p_dig, p_title, p_pages, assets_rel)
+                cid = f"{job_id}p{i + 1}"
+                db.create_job(cid, job["source"], None, provider)
+                (OUT_DIR / f"{cid}.md").write_text(p_md, encoding="utf-8")
+                (OUT_DIR / f"{cid}.transcript.txt").write_text(p_tr, encoding="utf-8")
+                db.update(
+                    cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+                    result_path=str(OUT_DIR / f"{cid}.md"),
+                    meta={
+                        "kind": "document", "part_of": job_id,
+                        "learning_type": p_dig.learning_type, "tur": p_dig.tur,
+                        "topics": p_dig.topics, "pages": len(p_pages),
+                        "sections": len(p_dig.sections), "critic_added": p_dig.added_by_critic,
+                        "critic_types": p_dig.critic_types, "compression": p_dig.compression,
+                        "transcript_path": str(OUT_DIR / f"{cid}.transcript.txt"),
+                    },
+                )
+                biten[0] += 1
+                db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
+                print(f"[belge-part] {cid} bitti: {p_title}", flush=True)
+                return ("ok", i, p_title, p_dig)
+            except Exception as exc:
+                # Bir parçanın LLM çağrısı patlarsa (kesilme, kota, flake) SADECE
+                # o parça kaybedilir. Video yolu bunu zaten böyle yapıyor; belge
+                # yolunda eksikti ve tek parça bütün işi öldürüyordu.
+                print(f"[belge-part] {job_id}p{i + 1} HATA: {exc}", flush=True)
+                return ("hata", i, p_title, str(exc)[:300])
 
-    sonuclar = [r for r in await asyncio.gather(*[_bir(i) for i in range(n)]) if r]
+    sonuclar = [r for r in await asyncio.gather(*[_bir(i) for i in range(n)], return_exceptions=True)
+                if r and not isinstance(r, BaseException)]
     sonuclar.sort(key=lambda x: x[1])
     ozetler = [(t, d) for (s, _i, t, d) in sonuclar if s == "ok"]
     hatalar = [(t, e) for (s, _i, t, e) in sonuclar if s == "hata"]
