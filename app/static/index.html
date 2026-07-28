@@ -404,17 +404,21 @@ input[type=text]::placeholder { color: var(--text-faint); }
         <div class="ilerleme" id="ilerleme"><div id="ilerlemeCubuk"></div></div>
 
         <div style="margin-top:var(--space-5);border-top:1px solid var(--border-hair);padding-top:var(--space-4)">
-          <label class="eyebrow" for="icerikTur">içerik</label>
-          <select id="icerikTur" style="margin-top:6px">
-            <option value="0">Video — ekrandaki slayt/kod da okunur</option>
-            <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
-          </select>
-          <label class="eyebrow" for="transkriptKaynak" style="display:block;margin-top:var(--space-4)">transkript</label>
-          <select id="transkriptKaynak" style="margin-top:6px">
-            <option value="">Sunucu (Groq) — hızlı, kısa videolar için</option>
-            <option value="yerel">Yerel (ev bilgisayarı) — uzun videolar, Groq 502 yok</option>
-          </select>
-          <div class="ipucu" id="transkriptNot" style="margin-top:8px;display:none"></div>
+          <div id="icerikBlok">
+            <label class="eyebrow" for="icerikTur">içerik</label>
+            <select id="icerikTur" style="margin-top:6px">
+              <option value="0">Video — ekrandaki slayt/kod da okunur</option>
+              <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
+            </select>
+          </div>
+          <div id="transkriptBlok">
+            <label class="eyebrow" for="transkriptKaynak" style="display:block;margin-top:var(--space-4)">transkript</label>
+            <select id="transkriptKaynak" style="margin-top:6px">
+              <option value="">Sunucu (Groq) — hızlı, kısa videolar için</option>
+              <option value="yerel">Yerel (ev bilgisayarı) — uzun videolar, Groq 502 yok</option>
+            </select>
+            <div class="ipucu" id="transkriptNot" style="margin-top:8px;display:none"></div>
+          </div>
           <label class="eyebrow" for="saglayici" style="display:block;margin-top:var(--space-4)">model</label>
           <select id="saglayici" style="margin-top:6px"></select>
           <div class="ipucu" id="saglayiciNot" style="margin-top:8px"></div>
@@ -1445,9 +1449,23 @@ const sekmeSec = (link) => {
   $("#sekDosya").setAttribute("aria-selected", String(!link));
   $("#panelLink").style.display = link ? "block" : "none";
   $("#panelDosya").style.display = link ? "none" : "block";
+  formSecenekleriGuncelle();
 };
 $("#sekLink").onclick = () => { sekmeSec(true); sifirlaDosya(); };
 $("#sekDosya").onclick = () => { sekmeSec(false); $("#kaynak").value = ""; };
+
+// İçerik (video/sadece-ses) ve Transkript (Groq/Yerel) YALNIZCA video/ses için
+// anlamlı. Dosya sekmesinde PDF/metin belgesi seçiliyse bu iki bloğu gizle —
+// belgede ne "sadece ses" ne "transkript kaynağı" geçerli.
+const BELGE_UZANTI = /\.(pdf|txt|md|markdown|epub)$/i;
+function formSecenekleriGuncelle() {
+  const dosyaTab = $("#panelDosya").style.display !== "none";
+  const f = dosyaTab ? $("#dosya").files[0] : null;
+  const belge = f ? BELGE_UZANTI.test(f.name) : false;
+  const goster = belge ? "none" : "block";
+  if ($("#icerikBlok")) $("#icerikBlok").style.display = goster;
+  if ($("#transkriptBlok")) $("#transkriptBlok").style.display = goster;
+}
 sekmeSec(true);
 
 $("#yukleAlan").onclick = () => $("#dosya").click();
@@ -1458,12 +1476,14 @@ $("#dosya").onchange = () => {
     $("#yukleMetin").textContent = `${f.name} (${mb(f.size)})`;
     $("#yukleAlan").classList.add("dolu");
   }
+  formSecenekleriGuncelle();
 };
 
 function sifirlaDosya() {
   $("#dosya").value = "";
   $("#yukleMetin").textContent = "Bir video, ses, PDF ya da Markdown seç";
   $("#yukleAlan").classList.remove("dolu");
+  formSecenekleriGuncelle();
 }
 
 // Yükleme XHR ile: fetch yükleme ilerlemesi vermiyor, 500 MB'lık videoda

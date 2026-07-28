@@ -15,6 +15,7 @@ from .config import (
     MAX_PDF_PAGES,
     OUT_DIR,
     PART_CONCURRENCY,
+    PART_PAGES,
     PART_SECONDS,
     UPLOAD_DIR,
     WORK_DIR,
@@ -418,6 +419,86 @@ async def _process(job_id: str) -> None:
     shutil.rmtree(work, ignore_errors=True)
 
 
+async def _process_document_long(
+    job_id, job, pdf, pages, base_title, assets_rel, sinirli, durum, n
+) -> None:
+    """Uzun PDF: sayfaları n parçaya böl, HER PARÇA ayrı özet (ayrı kütüphane girdisi),
+    tümü 'Tüm hali' birleşik. Uzun video _process_long'un belge eşi (ses/kare yok)."""
+    provider = job.get("provider") or llm.provider()
+    per = (len(pages) + n - 1) // n            # parça başına sayfa (tavan bölme)
+    n = (len(pages) + per - 1) // per          # gerçek parça sayısı
+    db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"0/{n} parça bitti")
+    koleksiyon = await summarize.classify_collection(base_title, [], db.distinct_collections())
+
+    sem = asyncio.Semaphore(PART_CONCURRENCY)
+    biten = [0]
+
+    async def _bir(i):
+        p_pages = pages[i * per:(i + 1) * per]
+        if not p_pages:
+            return None
+        p_title = f"{base_title} — Part {i + 1} (s.{p_pages[0].number}-{p_pages[-1].number})"
+        async with sem:
+            p_segs = document.to_segments(p_pages)
+            if not p_segs:
+                return ("hata", i, p_title, "Bu parçada okunabilir sayfa yok (taranmış/karantina).")
+            p_tr = transcribe.to_timestamped_text(p_segs)
+            p_sec = await segment.split_into_sections(p_segs, p_title, p_tr)
+            p_dig = await summarize.summarize(p_sec, p_tr, [])
+            p_md = render.render_document(p_dig, p_title, p_pages, assets_rel)
+            cid = f"{job_id}p{i + 1}"
+            db.create_job(cid, job["source"], None, provider)
+            (OUT_DIR / f"{cid}.md").write_text(p_md, encoding="utf-8")
+            (OUT_DIR / f"{cid}.transcript.txt").write_text(p_tr, encoding="utf-8")
+            db.update(
+                cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+                result_path=str(OUT_DIR / f"{cid}.md"),
+                meta={
+                    "kind": "document", "part_of": job_id,
+                    "learning_type": p_dig.learning_type, "tur": p_dig.tur,
+                    "topics": p_dig.topics, "pages": len(p_pages),
+                    "sections": len(p_dig.sections), "critic_added": p_dig.added_by_critic,
+                    "critic_types": p_dig.critic_types, "compression": p_dig.compression,
+                    "transcript_path": str(OUT_DIR / f"{cid}.transcript.txt"),
+                },
+            )
+            biten[0] += 1
+            db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
+            print(f"[belge-part] {cid} bitti: {p_title}", flush=True)
+            return ("ok", i, p_title, p_dig)
+
+    sonuclar = [r for r in await asyncio.gather(*[_bir(i) for i in range(n)]) if r]
+    sonuclar.sort(key=lambda x: x[1])
+    ozetler = [(t, d) for (s, _i, t, d) in sonuclar if s == "ok"]
+    hatalar = [(t, e) for (s, _i, t, e) in sonuclar if s == "hata"]
+
+    combined = _birlestir(base_title, ozetler, n, hatalar)
+    if sinirli:
+        combined = (
+            f"> ⚠️ Bu PDF **{durum['toplam']} sayfa**; işlem süresi için yalnız ilk "
+            f"**{durum['islenecek']} sayfa** işlendi (sunucu env `MAX_PDF_PAGES`).\n\n"
+        ) + combined
+    (OUT_DIR / f"{job_id}.md").write_text(combined, encoding="utf-8")
+    # 'Kaynağa sor' için tam belge transkripti (tüm sayfalar).
+    tpath = OUT_DIR / f"{job_id}.transcript.txt"
+    tpath.write_text(transcribe.to_timestamped_text(document.to_segments(pages)), encoding="utf-8")
+    ilk = ozetler[0][1] if ozetler else None
+    db.update(
+        job_id, status="done", stage="done", collection=koleksiyon,
+        title=f"{base_title} — Tüm hali", result_path=str(OUT_DIR / f"{job_id}.md"),
+        meta={
+            "kind": "document", "is_combined": True, "parts": n,
+            "parts_failed": len(hatalar), "pages": len(pages),
+            "pdf_toplam_sayfa": durum["toplam"] or len(pages), "pdf_sinirli": sinirli,
+            "topics": ilk.topics if ilk else [],
+            "learning_type": ilk.learning_type if ilk else "genel",
+            "tur": ilk.tur if ilk else "genel",
+            "transcript_path": str(tpath),
+        },
+    )
+    print(f"[belge-part] {job_id} tum hali: {len(ozetler)} ok, {len(hatalar)} hata", flush=True)
+
+
 async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     """PDF hattı: sayfa metni (katman ya da OCR) → aynı segment/summarize/defter.
 
@@ -451,6 +532,16 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
             "Hiçbir sayfadan güvenilir metin çıkmadı — belge tümüyle taranmış "
             "ve okunamadı olabilir. Karantina kanıtları defterde."
         )
+
+    # Uzun PDF → parça parça (uzun video gibi): tek dev özet 200 sayfada max_tokens'ı
+    # taşırıyor + gezilmesi zor. round(sayfa/PART_PAGES) >= 2 ise böl.
+    n_part = round(len(pages) / PART_PAGES) if pages else 0
+    if n_part >= 2:
+        await _process_document_long(
+            job_id, db.get(job_id) or {}, pdf, pages, title, assets_rel, sinirli, durum, n_part
+        )
+        shutil.rmtree(work, ignore_errors=True)
+        return
 
     transcript = transcribe.to_timestamped_text(segments)
     transcript_path = OUT_DIR / f"{job_id}.transcript.txt"
