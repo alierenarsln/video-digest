@@ -134,7 +134,7 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     kütüphane girdisi), tüm video 'Tüm hali' birleşik belge olur. Bir part'ın
     transkript hatası (Groq 502 gibi) diğerlerini ÖLDÜRMEZ — o part hata alır, gerisi
     tamamlanır. Part segmentleri mutlak zamana kaydırılır (tam videoya tıklanabilir)."""
-    base_title = job.get("title") or source.title
+    base_title = (job.get("title") or source.title).removesuffix(" — Tüm hali")
     provider = job.get("provider") or llm.provider()
     origin_url = job.get("origin_url") or source.meta.get("url")
     part_len = source.duration / n
@@ -425,6 +425,7 @@ async def _process_document_long(
     """Uzun PDF: sayfaları n parçaya böl, HER PARÇA ayrı özet (ayrı kütüphane girdisi),
     tümü 'Tüm hali' birleşik. Uzun video _process_long'un belge eşi (ses/kare yok)."""
     provider = job.get("provider") or llm.provider()
+    base_title = base_title.removesuffix(" — Tüm hali")  # tekrar-işlemede çift eki temizle
     per = (len(pages) + n - 1) // n            # parça başına sayfa (tavan bölme)
     n = (len(pages) + per - 1) // per          # gerçek parça sayısı
     db.update(job_id, title=f"{base_title} — Tüm hali", stage=f"0/{n} parça bitti")

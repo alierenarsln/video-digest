@@ -200,7 +200,7 @@ MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 200)
 # Uzun PDF de (uzun video gibi) parçalara bölünür: sayfa sayısı ~PART_PAGES'ı
 # belirgin aşarsa her parça AYRI özetlenir (part sayısı = round(sayfa/PART_PAGES)).
 # Tek dev özet 200 sayfada max_tokens'ı taşırıyor + gezilmesi zor.
-PART_PAGES = _int("PART_PAGES", 40)
+PART_PAGES = _int("PART_PAGES", 15)
 
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)
