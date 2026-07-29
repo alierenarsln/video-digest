@@ -1454,17 +1454,58 @@ const sekmeSec = (link) => {
 $("#sekLink").onclick = () => { sekmeSec(true); sifirlaDosya(); };
 $("#sekDosya").onclick = () => { sekmeSec(false); $("#kaynak").value = ""; };
 
-// İçerik (video/sadece-ses) ve Transkript (Groq/Yerel) YALNIZCA video/ses için
-// anlamlı. Dosya sekmesinde PDF/metin belgesi seçiliyse bu iki bloğu gizle —
-// belgede ne "sadece ses" ne "transkript kaynağı" geçerli.
+// Dosya/URL türünü algıla → uygun seçenekleri OTOMATİK öner + tür değişince güncelle.
+// Belge → video-only bloklar (içerik/transkript) gizli + özet Groq. Coderspace/CDN
+// → Yerel transkript + referer. Öneriler tür DEĞİŞİNCE uygulanır (elle seçimi ezmez).
 const BELGE_UZANTI = /\.(pdf|txt|md|markdown|epub)$/i;
-function formSecenekleriGuncelle() {
+const SES_UZANTI = /\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i;
+let _sonOneriTip = "__ilk__";
+
+function _tipVeOneri() {
   const dosyaTab = $("#panelDosya").style.display !== "none";
-  const f = dosyaTab ? $("#dosya").files[0] : null;
-  const belge = f ? BELGE_UZANTI.test(f.name) : false;
+  const f = dosyaTab ? ($("#dosya").files[0] || null) : null;
+  const url = dosyaTab ? "" : ($("#kaynak") ? $("#kaynak").value.trim() : "");
+  if (f) {
+    if (BELGE_UZANTI.test(f.name))
+      return { tip: "belge", belge: true, oneri: { model: "groq", ipucu: "Belge algılandı → özet Groq'ta (büyük PDF çok parçaya bölünür; OpenRouter'ın günlük 50 istek limitine sığmaz)." } };
+    if (SES_UZANTI.test(f.name))
+      return { tip: "ses", oneri: { icerik: "1", ipucu: "Ses dosyası → görüntü yok, sadece ses." } };
+    return { tip: "video-dosya", oneri: { icerik: "0", ipucu: "Video dosyası → ekrandaki slayt/kod da OCR'lanır." } };
+  }
+  if (url) {
+    if (/youtube\.com|youtu\.be/i.test(url))
+      return { tip: "youtube", oneri: { ipucu: "YouTube → ev bilgisayarın indirip cascade ile hızlı transkript eder." } };
+    if (/b-cdn\.net/i.test(url))
+      return { tip: "coderspace", oneri: { transkript: "yerel", referer: "coderspace.io", ipucu: "Coderspace/CDN algılandı → Yerel transkript (cascade) + referer 'coderspace.io' önerildi." } };
+    if (/\.m3u8(\?|$)|\.(mp4|mkv|webm|mov|m4a|mp3|wav)(\?|$)/i.test(url))
+      return { tip: "medya-link", oneri: { ipucu: "Doğrudan medya → sunucu indirir. Uzun/korumalı ise 'Yerel' + referer öner." } };
+    return { tip: "link", oneri: { ipucu: "Bağlantı → içerik türüne göre işlenir." } };
+  }
+  return { tip: "bos", oneri: {} };
+}
+function _trySet(sel, val) {
+  const el = $(sel);
+  if (el && [...el.options].some((o) => o.value === val)) el.value = val;
+}
+function formSecenekleriGuncelle() {
+  const { tip, belge, oneri } = _tipVeOneri();
+  // 1) belge → video-only bloklar gizli
   const goster = belge ? "none" : "block";
   if ($("#icerikBlok")) $("#icerikBlok").style.display = goster;
   if ($("#transkriptBlok")) $("#transkriptBlok").style.display = goster;
+  // 2) ipucu (her zaman güncel)
+  if ($("#ipucu") && oneri.ipucu) $("#ipucu").textContent = oneri.ipucu;
+  // 3) önerileri YALNIZCA tür değişince uygula (kullanıcının elle seçimini ezme)
+  if (tip !== _sonOneriTip) {
+    _sonOneriTip = tip;
+    if (oneri.model !== undefined) _trySet("#saglayici", oneri.model);
+    if (oneri.icerik !== undefined) _trySet("#icerikTur", oneri.icerik);
+    if (oneri.transkript !== undefined) _trySet("#transkriptKaynak", oneri.transkript);
+    if (oneri.referer !== undefined && $("#referer")) {
+      $("#referer").value = oneri.referer;
+      if (oneri.referer && $("#gelismisAc")) { $("#referer").style.display = "block"; $("#gelismisAc").textContent = "gizle"; }
+    }
+  }
 }
 sekmeSec(true);
 
@@ -1579,6 +1620,7 @@ async function gonder(dosyaMi) {
 $("#btn").onclick = () => gonder(false);
 $("#btnDosya").onclick = () => gonder(true);
 $("#kaynak").onkeydown = (e) => { if (e.key === "Enter") gonder(false); };
+$("#kaynak").oninput = formSecenekleriGuncelle;  // URL türüne göre önerileri güncelle
 
 // "gelişmiş": referer alanını aç/kapa (varsayılan gizli — sade giriş).
 $("#gelismisAc").onclick = () => {
