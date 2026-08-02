@@ -218,16 +218,16 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
             )
             print(f"[title] '{base_title}' -> '{uretilen}' | koleksiyon '{koleksiyon}'", flush=True)
             base_title = uretilen
-            for (st, i, _pt, _d) in sonuclar:
+            yeni_ozetler = []
+            for (st, i, _pt, d) in sonuclar:
                 if st != "ok":
                     continue
                 t0 = i * part_len
                 aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
-                db.update(
-                    f"{job_id}p{i + 1}",
-                    title=f"{base_title} — Part {i + 1} ({aralik})",
-                    collection=koleksiyon,
-                )
+                yeni_baslik = f"{base_title} — Part {i + 1} ({aralik})"
+                db.update(f"{job_id}p{i + 1}", title=yeni_baslik, collection=koleksiyon)
+                yeni_ozetler.append((yeni_baslik, d))
+            ozetler = yeni_ozetler  # "Tüm hali"ndeki parça başlıkları da yeni ada geçsin
 
     # Birleşik "Tüm hali" = bu (parent) iş.
     combined = _birlestir(base_title, ozetler, n, hatalar)
