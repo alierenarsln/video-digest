@@ -60,6 +60,14 @@ formüller, adım sıraları, "şuna dikkat" uyarıları, karşı örnekler.
 - Konuşmanın dolgu kısımlarını (selamlama, reklam, "abone olun") at.
 - terms: bu bölümde tanıtılan teknik terimler ve konuşmacının verdiği tanım. \
 Terim tanıtılmadıysa boş bırak.
+- KISALTMALARI AÇMA: transkript bir kısaltmanın (MCP, RAG, POC, KDE gibi) açılımını \
+AÇIKÇA söylemediyse, kısaltmayı olduğu gibi bırak — açılımını UYDURMA/tahmin etme. \
+(Örn. "MCP"yi kendince "Microservices Control Plane" diye açmak ağır bir hatadır; \
+konuşmacı söylemediyse sadece "MCP" yaz.)
+- ÖZEL İSİMLERİ (kişi, şirket, ürün, araç, kütüphane, model) metin boyunca TEK ve \
+TUTARLI biçimde yaz — aynı ismi iki farklı şekilde yazma. Bir ismi "düzeltmeye" ya \
+da tamamlamaya ÇALIŞMA; transkriptte nasıl geçiyorsa öyle koru (yanlış duyulmuş \
+olabilir ama tahminle değiştirmek daha büyük hatadır).
 - Verilen kaynaklarda olmayan hiçbir şey ekleme.
 
 EKRAN METNİ hakkında:
@@ -98,7 +106,14 @@ _SYNTH_SYSTEM = """Sana bir videonun bölüm bölüm notları veriliyor. İki ş
 1. tldr: Videonun ana çıkarımları, 3-6 madde. Her madde tek başına anlamlı bir \
 cümle olmalı — "birçok konu işlendi" gibi içi boş maddeler yazma. Okuyucu sadece \
 bunları okusa videonun ne dediğini bilmeli.
-2. glossary: Bölüm notlarındaki terimleri birleştir, tekrarları at, alfabetik sırala."""
+2. glossary: Bölüm notlarındaki terimleri birleştir, tekrarları at, alfabetik sırala.
+
+Her ikisi için kurallar:
+- Kısaltmaların açılımını UYDURMA — bölüm notlarında açıkça verilmediyse kısaltmayı \
+olduğu gibi bırak (ör. "MCP"yi "Microservices Control Plane" diye açma).
+- Özel isimleri (kişi/şirket/araç/model) TEK ve tutarlı biçimde yaz.
+- glossary'de aynı terimin/kısaltmanın farklı yazımlarını (ör. "KDE Plot" ile "KDE \
+Plot (Kernel Density Estimator)") TEK girdide BİRLEŞTİR — tekrar bırakma."""
 
 _SYNTH_SYSTEM += language_rule()
 
