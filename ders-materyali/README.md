@@ -1,5 +1,8 @@
 # Ders materyali
 
+> **[▶ Testi simdi ac](https://alierenarsln.github.io/video-digest/ders-materyali/ine4106-bpr-drill.html)** — kurulum yok, telefonda da calisir.
+> (GitHub `.html` dosyalarini render etmez, ham kod gosterir; calistirmak icin bu Pages linkini kullan.)
+
 Ders slaytlarindan uretilen sinav calisma materyalleri. Bu klasor `video-digest`'in
 "kurs icerigi -> calisilabilir ozet" akisinin ciktilarini tutar; fark su ki kaynak
 video degil, ders notu PDF'leri.
