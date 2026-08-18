@@ -59,12 +59,34 @@ Write-Host "Ev indiricisi calisiyor -> $Sunucu" -ForegroundColor Cyan
 Write-Host "Bekleyen linkleri $AralikSaniye sn'de bir kontrol ediyor. Durdurmak: Ctrl+C" -ForegroundColor DarkGray
 Write-Host ""
 
+# --- ARKA PLAN KALP ATISI (AYRI THREAD) ---
+# Sorun: ana dongu uzun bir isle (yt-dlp indirme + cascade transkript; buyuk
+# videoda DAKIKALARCA) bloklaninca satir-ici kalp atisi atilamaz. Sunucu esigi
+# 90 sn; atis gelmeyince PC ACIK olsa bile "cevrimdisi" sanar ve sonraki isler
+# gereksiz yere "bekliyor"da kalir (canli olarak yasandi).
+# Cozum: kalp atisini AYRI bir runspace'te, ana isten BAGIMSIZ bir thread'de
+# gonder. Ana thread ne kadar bloklanirsa bloklansin, atis 30 sn'de bir gider
+# (90 sn esikte 2 ardisik kaciriga tolerans). Timer/Register-ObjectEvent ise
+# ise YARAMAZ: dis surec (& $ytdlp) bloklarken runspace mesgul, event tetiklenmez.
+$hbRunspace = [runspacefactory]::CreateRunspace()
+$hbRunspace.Open()
+$hbRunspace.SessionStateProxy.SetVariable("Sunucu", $Sunucu)
+$hbRunspace.SessionStateProxy.SetVariable("H", $H)
+$hbPS = [powershell]::Create()
+$hbPS.Runspace = $hbRunspace
+[void]$hbPS.AddScript({
+    while ($true) {
+        try { Invoke-RestMethod "$Sunucu/api/agent/heartbeat" -Method POST -Headers $H -TimeoutSec 15 | Out-Null } catch {}
+        Start-Sleep -Seconds 30
+    }
+})
+[void]$hbPS.BeginInvoke()
+Write-Host "Arka plan kalp atisi basladi (30 sn) - uzun islerde de cevrimici kalir." -ForegroundColor DarkGray
+
 while ($true) {
     try {
-        # "Yasiyorum" sinyali: site "ev bilgisayari cevrimici" gostersin. Hata
-        # olursa yut - kalp atisi kritik degil, indirme akisini durdurmasin.
-        try { Invoke-RestMethod "$Sunucu/api/agent/heartbeat" -Method POST -Headers $H -TimeoutSec 15 | Out-Null } catch {}
-
+        # Kalp atisi artik AYRI thread'de (yukaridaki $hbPS) - burada tekrar
+        # atmaya gerek yok; uzun isler sirasinda da cevrimici kalinir.
         $bekleyen = Invoke-RestMethod "$Sunucu/api/pending-downloads" -Headers $H -TimeoutSec 30
 
         foreach ($is in $bekleyen) {

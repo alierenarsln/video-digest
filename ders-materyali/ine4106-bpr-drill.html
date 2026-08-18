@@ -1,0 +1,608 @@
+<title>BPR Midterm Drill</title>
+<style>
+:root{
+  --bg:#e9edf3; --surface:#ffffff; --surface-2:#f3f6fa;
+  --ink:#161c2b; --ink-2:#3c4658; --muted:#6a7488;
+  --line:#cfd7e3; --line-soft:#e2e8f1;
+  --accent:#a8720c; --accent-soft:#f6ecd6; --accent-line:#d8b46a;
+  --on-accent:#ffffff;
+  --good:#186d4c; --good-soft:#e2f1ea; --good-line:#8cc3ac;
+  --bad:#a33228; --bad-soft:#f8e6e3; --bad-line:#dfa199;
+  --shadow:0 1px 2px rgba(22,28,43,.06), 0 8px 24px -12px rgba(22,28,43,.18);
+  --font-q:Constantia,"Iowan Old Style",Georgia,"Times New Roman",serif;
+  --font-ui:Corbel,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --font-mono:"Cascadia Mono",Consolas,ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1219; --surface:#161c27; --surface-2:#1c2430;
+    --ink:#e7ecf4; --ink-2:#b9c3d3; --muted:#8792a5;
+    --line:#2b3543; --line-soft:#222b37;
+    --accent:#dda43c; --accent-soft:#2a2317; --accent-line:#6d5722;
+    --on-accent:#161104;
+    --good:#57bd92; --good-soft:#14261f; --good-line:#2f5a48;
+    --bad:#e2786c; --bad-soft:#2a1917; --bad-line:#5e332e;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1219; --surface:#161c27; --surface-2:#1c2430;
+  --ink:#e7ecf4; --ink-2:#b9c3d3; --muted:#8792a5;
+  --line:#2b3543; --line-soft:#222b37;
+  --accent:#dda43c; --accent-soft:#2a2317; --accent-line:#6d5722;
+  --on-accent:#161104;
+  --good:#57bd92; --good-soft:#14261f; --good-line:#2f5a48;
+  --bad:#e2786c; --bad-soft:#2a1917; --bad-line:#5e332e;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--font-ui); font-size:16px; line-height:1.55;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:720px; margin:0 auto; padding:0 20px 64px; display:flex; flex-direction:column; gap:20px}
+
+.rail{
+  position:sticky; top:0; z-index:20; background:var(--bg);
+  padding:14px 0 10px; display:flex; flex-direction:column; gap:9px;
+  border-bottom:1px solid var(--line-soft);
+}
+.rail-top{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+.brand{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+.counter{margin-left:auto; font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums; color:var(--ink-2)}
+.counter b{color:var(--ink); font-weight:600}
+.score{font-family:var(--font-mono); font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--muted); min-height:1.2em}
+.score .hit{color:var(--good)} .score .miss{color:var(--bad)}
+.bar{height:3px; background:var(--line-soft); border-radius:2px; overflow:hidden}
+.bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .35s ease}
+
+.card{background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow)}
+.panel{padding:28px 26px; display:flex; flex-direction:column; gap:18px}
+h1{margin:0; font-family:var(--font-q); font-weight:600; font-size:clamp(26px,5vw,34px); line-height:1.15; letter-spacing:-.01em; text-wrap:balance}
+.lede{margin:0; color:var(--ink-2); max-width:62ch}
+.hr{height:1px; background:var(--line-soft)}
+.scope-title{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:2px}
+.notes{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px}
+.chip{
+  display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  font:inherit; color:var(--ink); cursor:pointer;
+  background:var(--surface-2); border:1px solid var(--line);
+  border-radius:3px; padding:9px 11px; transition:border-color .15s, background .15s;
+}
+.chip:hover{border-color:var(--accent-line)}
+.chip[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent-line)}
+.chip .num{font-family:var(--font-mono); font-size:11px; color:var(--muted); min-width:1.6em; font-variant-numeric:tabular-nums}
+.chip[aria-pressed="true"] .num{color:var(--accent)}
+.chip .nm{flex:1; font-size:14px; line-height:1.3}
+.chip .ct{font-family:var(--font-mono); font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+button{font:inherit}
+.btn{
+  cursor:pointer; font-family:var(--font-ui); font-size:15px;
+  padding:11px 20px; border-radius:3px; border:1px solid var(--line);
+  background:var(--surface-2); color:var(--ink); transition:border-color .15s, background .15s;
+}
+.btn:hover{border-color:var(--accent-line)}
+.btn-primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600}
+.btn-primary:hover{filter:brightness(1.06); border-color:var(--accent)}
+.btn-ghost{background:transparent}
+.btn:disabled{opacity:.45; cursor:default}
+.toggle{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-2); cursor:pointer}
+.toggle input{accent-color:var(--accent); width:16px; height:16px}
+
+.qcard{padding:24px 24px 22px; display:flex; flex-direction:column; gap:16px}
+.eyebrow{display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+.eyebrow .tag{color:var(--accent); border:1px solid var(--accent-line); background:var(--accent-soft); border-radius:2px; padding:2px 7px; letter-spacing:.08em}
+.qtext{margin:0; font-family:var(--font-q); font-size:clamp(18px,2.6vw,21px); line-height:1.45; text-wrap:pretty}
+.opts{display:flex; flex-direction:column; gap:8px}
+.opt{
+  display:flex; gap:12px; align-items:flex-start; width:100%; text-align:left;
+  cursor:pointer; font:inherit; color:var(--ink); line-height:1.45;
+  background:var(--surface-2); border:1px solid var(--line);
+  border-radius:3px; padding:12px 14px; transition:border-color .14s, background .14s;
+}
+.opt:hover:not(:disabled){border-color:var(--accent-line)}
+.opt:disabled{cursor:default}
+.opt .key{font-family:var(--font-mono); font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:2px; min-width:22px; height:22px; display:grid; place-items:center; flex:none; margin-top:1px}
+.opt .txt{flex:1}
+.opt.is-right{background:var(--good-soft); border-color:var(--good-line)}
+.opt.is-right .key{color:var(--good); border-color:var(--good-line)}
+.opt.is-wrong{background:var(--bad-soft); border-color:var(--bad-line)}
+.opt.is-wrong .key{color:var(--bad); border-color:var(--bad-line)}
+.opt.dim{opacity:.5}
+
+.fb{border-left:3px solid var(--accent); background:var(--surface-2); border-radius:0 3px 3px 0; padding:14px 16px; display:flex; flex-direction:column; gap:6px}
+.fb.ok{border-left-color:var(--good)}
+.fb.no{border-left-color:var(--bad)}
+.fb-head{font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase}
+.fb.ok .fb-head{color:var(--good)} .fb.no .fb-head{color:var(--bad)}
+.fb-ans{margin:0; font-family:var(--font-q); font-size:16px; line-height:1.45}
+.fb-ans b{color:var(--accent)}
+.fb-why{margin:0; font-size:14.5px; color:var(--ink-2); line-height:1.5}
+.foot{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.hint{font-family:var(--font-mono); font-size:11px; color:var(--muted); letter-spacing:.05em}
+.foot .btn{margin-left:auto}
+
+.big{font-family:var(--font-mono); font-size:44px; font-variant-numeric:tabular-nums; line-height:1; color:var(--accent)}
+table{width:100%; border-collapse:collapse; font-size:14px}
+th,td{text-align:left; padding:7px 8px; border-bottom:1px solid var(--line-soft)}
+th{font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:400}
+td.n{font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap}
+.tbl-scroll{overflow-x:auto}
+.wk{color:var(--bad)} .st{color:var(--good)}
+.rvw{display:flex; flex-direction:column; gap:13px; max-height:360px; overflow-y:auto; padding-right:4px}
+.rvw-item{border-left:2px solid var(--bad-line); padding:2px 0 2px 12px}
+.rvw-q{margin:0 0 3px; font-family:var(--font-q); font-size:15px; line-height:1.4}
+.rvw-a{margin:0; font-size:13.5px; color:var(--ink-2)}
+.rvw-a b{color:var(--good)}
+.theme-btn{background:none; border:none; cursor:pointer; color:var(--muted); font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:2px 0}
+.theme-btn:hover{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+@media (max-width:520px){
+  .wrap{padding:0 14px 48px}
+  .qcard,.panel{padding:20px 17px}
+  .foot .btn{width:100%; margin-left:0}
+}
+</style>
+
+<div class="wrap">
+  <div class="rail">
+    <div class="rail-top">
+      <span class="brand">INE4106 &middot; Notes 1&ndash;10</span>
+      <button class="theme-btn" id="theme" type="button">theme</button>
+      <span class="counter" id="counter"></span>
+    </div>
+    <div class="bar"><i id="fill"></i></div>
+    <div class="score" id="score"></div>
+  </div>
+  <main id="stage"></main>
+</div>
+
+<script>
+// Correct answer is always the FIRST option in source; options are shuffled at render.
+const NOTES = {
+  1:"BPR", 2:"Hammer paper", 3:"Change Management", 4:"Introduction to ERP",
+  5:"Introduction to SAP", 6:"SAP Concepts", 7:"SAP S/4HANA", 8:"SD (Sell)",
+  9:"MM (Buy)", 10:"PP (Make)"
+};
+
+const BANK = [
+/* ---------------- 1. BPR ---------------- */
+{n:1,q:"Business Process Reengineering is best defined as:",o:["The fundamental rethinking and radical redesign of business processes","The gradual refinement of existing procedures","The automation of existing workflows","The outsourcing of non-core functions"],e:"The aim is dramatic improvement in critical measures: cost, quality, service and speed."},
+{n:1,q:"The performance improvement BPR typically targets is on the order of:",o:["50 to 70 per cent","2 to 5 per cent","10 to 15 per cent","Exactly 100 per cent"],e:"Dramatic, not marginal. A few percentage points is continuous improvement, not reengineering."},
+{n:1,q:"Which pair belongs to continuous improvement rather than BPR?",o:["Kaizen and TQM","Ford and Mazda","As-Is and To-Be","EMV and utility"],e:"Kaizen and TQM are incremental and gradual; BPR is radical and disruptive."},
+{n:1,q:"Can BPR and continuous improvement be used in the same organization?",o:["Yes: BPR for transformation, continuous improvement for ongoing refinement","No, they are mutually exclusive philosophies","Only if the company is a manufacturer","Only after an ERP system is installed"],e:"They are complementary. BPR resets the process; CI keeps polishing it afterwards."},
+{n:1,q:"Documenting how the existing process actually works is called the:",o:["As-Is analysis","To-Be design","Requisite model","Benchmark study"],e:"As-Is is step 2 of implementation; the redesign is the To-Be, step 3."},
+{n:1,q:"Designing the new process is called the:",o:["To-Be design","As-Is analysis","Gap closure","Post-implementation review"],e:"As-Is describes today; To-Be describes the redesigned future state."},
+{n:1,q:"In BPR, information technology should be treated as:",o:["An enabler of a fundamentally new process design","A faster way of running the current process","A replacement for process analysis","A reporting tool only"],e:"ERP, workflow automation, analytics and cloud enable redesign; they do not substitute for it."},
+{n:1,q:"The unit of analysis in BPR is:",o:["The end-to-end process that delivers value to a customer","The individual task","The department","The job description"],e:"Focusing on tasks or departments is exactly the fragmentation BPR sets out to remove."},
+{n:1,q:"Which is the first step of BPR implementation?",o:["Identify the processes to be redesigned","Develop the new process design","Implement the new process","Evaluate and monitor results"],e:"Identify, then analyse As-Is, then design To-Be, then implement, then evaluate."},
+{n:1,q:"Which is the final step of BPR implementation?",o:["Evaluate and monitor the results","Implement the new process","Develop the new design","Analyse the current process"],e:"Evaluation closes the loop and triggers further adjustment where needed."},
+{n:1,q:"Which is listed as a challenge or risk of BPR?",o:["Employee resistance to change","Guaranteed short payback","Reduced need for top management involvement","Automatic improvement in morale"],e:"Also high cost and time, operational disruption, weak leadership commitment, poor communication and training."},
+{n:1,q:"Which is listed as a benefit of BPR?",o:["Faster response to market changes","Elimination of all uncertainty","A permanent freeze on process change","Removal of the need for IT"],e:"Benefits given: cost reduction, speed, customer satisfaction, flexibility and better use of technology."},
+{n:1,q:"A redesign that keeps every existing step but runs them on new software is:",o:["Not reengineering, because the underlying rules are unchanged","Reengineering, because technology was applied","Reengineering, because it is expensive","Reengineering, provided savings exceed 20 per cent"],e:"Hammer's point exactly: automating a bad process only makes it fail faster."},
+{n:1,q:"BPR is described as customer-oriented, which means the redesign starts from:",o:["What the customer values in the output of the process","The organisation chart","The current IT landscape","The existing budget"],e:"Redesign works backwards from customer value, not forwards from the current structure."},
+
+/* ---------------- 2. Hammer paper ---------------- */
+{n:2,q:"The title of Hammer's 1990 Harvard Business Review article is:",o:["Reengineering Work: Don't Automate, Obliterate","Reengineering the Corporation","The Balanced Scorecard","Making Hard Decisions"],e:"The 1993 book with Champy is Reengineering the Corporation."},
+{n:2,q:"Hammer's phrase about paving the cow paths means:",o:["Do not embed outdated processes in new technology","Do not invest in information technology","Do not redesign more than one process at a time","Do not consult the people doing the work"],e:"Automating an obsolete process preserves the obsolescence and adds cost."},
+{n:2,q:"Which Hammer principle says one person should perform all the steps, with the job designed around an objective?",o:["Organize around outcomes, not tasks","Capture information once and at the source","Link parallel activities instead of integrating their results","Treat dispersed resources as though they were centralized"],e:"The MBL case manager is the quintessential example."},
+{n:2,q:"Operating departments placing their own orders with a credit card and an approved-vendor database illustrates:",o:["Have those who use the output of the process perform the process","Organize around outcomes, not tasks","Put the decision point where the work is performed","Capture information once and at the source"],e:"The customer of the process becomes its performer, so the handoff disappears."},
+{n:2,q:"Ford's receiving department entering goods data directly, instead of sending it to accounts payable, illustrates:",o:["Subsume information-processing work into the real work that produces the information","Organize around outcomes, not tasks","Link parallel activities","Treat dispersed resources as though centralized"],e:"The unit that produces the information also processes it."},
+{n:2,q:"Hewlett-Packard's purchasing redesign illustrates which principle?",o:["Treat geographically dispersed resources as though they were centralized","Organize around outcomes, not tasks","Capture information once and at the source","Have those who use the output perform the process"],e:"Divisional purchasing units were kept but coordinated through a corporate unit and a shared vendor database."},
+{n:2,q:"A bank whose separate lending units may each extend the full credit limit to one customer needs which principle?",o:["Link parallel activities instead of integrating their results","Organize around outcomes, not tasks","Put the decision point where the work is performed","Subsume information-processing into the real work"],e:"Coordinate parallel units while their work is in progress, not after it is finished."},
+{n:2,q:"Which principle flattens the organization by letting the people doing the work make the decisions?",o:["Put the decision point where the work is performed, and build control into the process","Organize around outcomes, not tasks","Capture information once and at the source","Have those who use the output perform the process"],e:"Managers move from controller and supervisor to supporter and facilitator."},
+{n:2,q:"Bar coding, relational databases and EDI are given as the enablers of which principle?",o:["Capture information once and at the source","Link parallel activities","Organize around outcomes, not tasks","Treat dispersed resources as though centralized"],e:"One insurer had been entering the same items into as many as five stovepipe systems."},
+{n:2,q:"How many data items did Ford's old accounts payable process match, and how many does the new one match?",o:["14 old, 3 new","3 old, 14 new","20 old, 5 new","5 old, 1 new"],e:"The three retained items are part number, unit of measure and supplier code."},
+{n:2,q:"Ford's original goal for accounts payable, and what reengineering actually delivered, were:",o:["A 20 per cent cut; a 75 per cent cut was achieved","A 75 per cent cut; only 20 per cent was achieved","A 50 per cent cut; 50 per cent was achieved","A 100 per cent cut; 60 per cent was achieved"],e:"The modest target came from tinkering; the radical result came from changing the rule."},
+{n:2,q:"Mazda's accounts payable organization employed roughly:",o:["5 people","50 people","400 people","500 people"],e:"Ford had more than 500 in North America, which is what made the comparison so stark."},
+{n:2,q:"Which rule did Ford's reengineering replace?",o:["“We pay when we receive the invoice” became “We pay when we receive the goods”","“We pay when we receive the goods” became “We pay when we receive the invoice”","“We pay monthly” became “We pay weekly”","“We pay after inspection” became “We pay on order”"],e:"The new rule made invoiceless processing possible: no invoice is needed at all."},
+{n:2,q:"The new role created at Mutual Benefit Life was the:",o:["Case manager","Process owner","Senior underwriter","Field supervisor"],e:"The case manager has total responsibility from the time an application is received until the policy is issued."},
+{n:2,q:"Mutual Benefit Life's old application process involved:",o:["As many as 30 discrete steps, 5 departments and 19 people","3 steps, 2 departments and 4 people","17 steps, 4 departments and 22 people","100 steps, 10 departments and 60 people"],e:"Best case 24 hours, but typically 5 to 25 days."},
+{n:2,q:"Another insurer measured 22 days of elapsed time against how much actual work?",o:["17 minutes","17 hours","2 days","5 days"],e:"The gap between elapsed time and work time is the classic signature of a fragmented process."},
+{n:2,q:"MBL's president demanded an improvement in customer service of:",o:["60 per cent","10 per cent","25 per cent","90 per cent"],e:"A target that large cannot be met by tinkering, which is what forced a redesign."},
+{n:2,q:"After reengineering, Mutual Benefit Life:",o:["Eliminated 100 field office positions and handled more than twice the volume","Doubled its headcount to cope with volume","Outsourced underwriting entirely","Reduced turnaround to 22 days"],e:"Turnaround fell to as little as 4 hours, with 2 to 5 days typical."},
+{n:2,q:"Hewlett-Packard's purchasing results included:",o:["A 150 per cent improvement in on-time deliveries and a 75 per cent reduction in failure rates","A 15 per cent improvement in deliveries and no change in failures","A 50 per cent rise in purchasing headcount","A 20 per cent reduction in the number of vendors"],e:"Lead times also fell by 50 per cent and the cost of goods purchased dropped significantly."},
+{n:2,q:"Hammer characterises a reengineering effort as:",o:["An all-or-nothing proposition with an uncertain result","A carefully phased, low-risk programme","A purely technical IT project","A synonym for headcount reduction"],e:"It cannot be planned meticulously and accomplished in small and cautious steps."},
+
+/* ---------------- 3. Change Management ---------------- */
+{n:3,q:"Change management is described as covering:",o:["Both the technical side and the human side of change","Only systems, processes and structures","Only employee attitudes and emotions","Only the period immediately after go-live"],e:"Technical: processes, systems, structures. Human: attitudes, emotions, behaviours."},
+{n:3,q:"Which is listed as a main goal of change management?",o:["Minimising resistance and increasing employee engagement","Reducing the number of employees","Eliminating the need for training","Avoiding all organisational change"],e:"Other goals: effective implementation, helping people adapt, aligning goals and sustaining the change."},
+{n:3,q:"Which is NOT one of the five types of organizational change listed?",o:["Financial change","Strategic change","Technological change","People-centered change"],e:"The five are strategic, structural, technological, people-centered and process-oriented."},
+{n:3,q:"Redesigning workflows, procedures or operations for efficiency is:",o:["Process-oriented change","People-centered change","Structural change","Strategic change"],e:"People-centered change is a shift in culture, behaviour or leadership style."},
+{n:3,q:"Adjusting the organisation's hierarchy, roles or reporting relationships is:",o:["Structural change","Strategic change","Technological change","Process-oriented change"],e:"Strategic change concerns overall direction, such as entering new markets."},
+{n:3,q:"In the seven-step change process, communicating the change comes:",o:["After planning and before implementation","Before identifying the need","After implementation","Only at the very end"],e:"Order: identify the need, plan, communicate, implement, manage resistance, monitor, reinforce."},
+{n:3,q:"In the seven-step process, managing resistance is:",o:["Step 5, after implementation has begun","Step 1, before anything else","Step 7, the very last activity","Not part of the process"],e:"Resistance is treated as a natural reaction to be listened to and supported, not suppressed."},
+{n:3,q:"The final step of the seven-step change process is:",o:["Reinforcing and sustaining the change","Monitoring and evaluating","Managing resistance","Implementing the change"],e:"Recognise achievements, adjust policies and embed the change in the culture to prevent backsliding."},
+{n:3,q:"Kotter's change model was proposed in:",o:["1996","1990","1993","2015"],e:"Hammer's paper is 1990, the Hammer and Champy book 1993, Kotter's model 1996."},
+{n:3,q:"The first step of Kotter's eight-step model is:",o:["Create a sense of urgency","Form a guiding coalition","Develop a vision and strategy","Communicate the vision"],e:"Urgency comes first; anchoring in the culture comes last."},
+{n:3,q:"The last step of Kotter's model is:",o:["Anchor new approaches in the culture","Generate short-term wins","Consolidate gains and produce more change","Empower broad-based action"],e:"Without anchoring, the organisation reverts to its old habits."},
+{n:3,q:"Which is listed as a cause of resistance to change?",o:["Lack of trust in leadership","Excessive training","Too much communication","Over-delegation of authority"],e:"Also fear of the unknown, loss of control or job security, poor communication and insufficient training."},
+
+/* ---------------- 4. Introduction to ERP ---------------- */
+{n:4,q:"An ERP system is characterised by:",o:["A single software package running the company on a common database","A separate database for each department","A reporting layer on top of legacy systems","A spreadsheet-based planning model"],e:"Integration of finance, HR, sales and marketing, and operations through shared data."},
+{n:4,q:"The evolution of ERP ran:",o:["MRP, then MRP II, then ERP","ERP, then MRP II, then MRP","MRP II, then MRP, then ERP","CRM, then ERP, then MRP"],e:"It began in the 1970s, and ERP typically still has an MRP core."},
+{n:4,q:"Oracle Corporation was founded in 1977 and offered the first commercial SQL in:",o:["1979","1972","1985","1992"],e:"SAP was founded in 1972; ERP systems drew major attention from the 1990s."},
+{n:4,q:"Which is listed among the claims made for ERP?",o:["Implementation of best practices and standardization of processes","Elimination of the need for training","Guaranteed reduction in headcount","Complete independence of modules"],e:"Also value through integration, real-time information, one-source data and online access."},
+{n:4,q:"On the conception versus reality slide, the reality of ERP selling is that:",o:["Vendors would like to sell full systems but usually sell modules","Vendors refuse to sell individual modules","Buyers always convert the entire system at once","Modules cannot be integrated later"],e:"Buyers reduce cost and risk by starting at a smaller scale."},
+{n:4,q:"System integration in ERP is paired with which disadvantage?",o:["Less flexibility","Errors are harder to correct","Less freedom and creativity","Underbudgeted training"],e:"Data integration gives greater accuracy but is harder to correct; better methods cost freedom and creativity."},
+{n:4,q:"Greater accuracy from data integration comes at the price of:",o:["Errors being harder to correct","Slower reporting","Loss of real-time access","Weaker standardization"],e:"When one number feeds everything, one bad number contaminates everything."},
+{n:4,q:"Which cost is specifically described as typically underbudgeted?",o:["Training","Licensing","Hardware","Consulting travel"],e:"Along with dynamic needs and other hidden implementation costs."},
+{n:4,q:"The most frequently cited reason for implementing an ERP system is:",o:["Replace legacy system, at 16 per cent","Position company for growth, at 13 per cent","Better serve customers, at 5 per cent","Other companies have ERP, at 2 per cent"],e:"Growth and improving business performance follow at 13 per cent each."},
+{n:4,q:"In the module shorthand used in the course, “Make” refers to:",o:["PP","MM","SD","WM"],e:"MM buys, SD sells, FI and CO track, HCM is people, WM stores, EAM maintains, CS services."},
+{n:4,q:"In the same shorthand, “Store” refers to:",o:["WM","MM","EAM","CS"],e:"Warehouse Management stores; Enterprise Asset Management maintains."},
+{n:4,q:"ERP is described as a strategic planning tool because it:",o:["Improves supply chain management and links customers and suppliers more strongly","Removes the need for forecasting","Guarantees lower unit costs","Eliminates the need for future upgrades"],e:"Its strategic implications also include high initial and maintenance cost and intensive training."},
+{n:4,q:"SAP's position in the ERP market is described as:",o:["World leader in enterprise software by total revenue, above EUR 30 billion a year","One of several equal competitors with Sage and Epicor","A niche vendor for small manufacturers","A database vendor rather than an ERP vendor"],e:"Other vendors listed include Oracle, Microsoft Dynamics, Infor, NetSuite and Sage."},
+
+/* ---------------- 5. Introduction to SAP ---------------- */
+{n:5,q:"SAP was founded in:",o:["1972, in Walldorf, Germany","1977, in California","1970, in Munich","1992, in Hanover"],e:"Its original purpose was standard software for integrated business solutions in real time."},
+{n:5,q:"SAP is described as:",o:["The world's largest business software company and third-largest independent software provider","The world's largest database vendor","A subsidiary of Oracle","A consultancy rather than a software company"],e:"Revenue is quoted at more than EUR 30 billion a year."},
+{n:5,q:"The employee and country figures given for SAP are:",o:["Over 65,000 employees in more than 75 countries","Over 6,500 employees in 20 countries","Over 200,000 employees in 180 countries","Over 2,500 employees in 75 countries"],e:"2,500+ is the number of business partners, not employees."},
+{n:5,q:"The customer figure given in the Introduction to SAP deck is:",o:["232,000+ customers in more than 180 countries","400,000 customers in 190 countries","65,000 customers in 75 countries","200,000 customers in 100 countries"],e:"The later S/4HANA deck quotes 400,000 customers in 190 countries."},
+{n:5,q:"SAP's portfolio strength is described as multi-lingual, multi-currency and:",o:["Multi-balance, meaning parallel general ledger accounting","Multi-vendor, meaning any database","Multi-tenant, meaning one shared instance","Multi-modal, meaning any transport type"],e:"It is designed for all business sizes and industries, from automotive to higher education."},
+{n:5,q:"The SAP Business Suite is composed of:",o:["SAP ERP at the centre, surrounded by PLM, SRM, CRM and SCM, on SAP NetWeaver","Only SAP ERP","NetWeaver at the centre, surrounded by ERP","HANA at the centre, surrounded by Fiori"],e:"NetWeaver is the underlying platform for the whole suite."},
+{n:5,q:"The four integration layers of SAP NetWeaver are:",o:["People, Information, Process Integration and Application Platform","Sales, Purchasing, Production and Finance","Client, Company Code, Plant and Storage Location","PLM, SRM, CRM and SCM"],e:"The Application Platform layer contains J2EE, ABAP and the database and OS abstraction."},
+{n:5,q:"SAP Enhancement Packages are:",o:["Optionally installed and activated software innovations for SAP ERP 6.0","Mandatory support packages","Database patches","Third-party add-ons"],e:"They deliver UI simplifications, functional enhancements and enterprise services, and are explicitly not support packages."},
+{n:5,q:"The three concepts used to represent data in the SAP Business Suite are:",o:["Organizational data, master data and transaction data","Input, process and output data","Static, dynamic and archived data","Header, item and schedule data"],e:"Documents then record the business process using all three."},
+{n:5,q:"Which of these is organizational data rather than master data?",o:["Distribution channel","Vendor","Condition","Material"],e:"Company code, plant, storage location, distribution channel and purchasing organization are organizational data."},
+{n:5,q:"Under SAP ERP core applications, Sales and Distribution belongs to:",o:["Logistics","Finance","Human Capital Management","Technology"],e:"Logistics also contains Materials Management, Production Planning, Plant Maintenance and Quality Management."},
+
+/* ---------------- 6. SAP Concepts ---------------- */
+{n:6,q:"The four basic concepts introduced in the SAP Concepts unit are:",o:["Organizational data, master data, process data and documents","Client, company code, plant and storage location","Sales, purchasing, production and finance","Inquiry, quotation, order and invoice"],e:"Documents pull together the organizational, master and process data of one business event."},
+{n:6,q:"The client in an SAP system is:",o:["The highest organizational unit and an independent environment","The smallest unit with its own legal books","A synonym for the customer master","A grouping of materials"],e:"It represents an enterprise consisting of other organizational units."},
+{n:6,q:"The company code is defined as:",o:["The smallest organizational unit for which a legal set of books can be maintained","The highest organizational unit in the system","A manufacturing facility","A grouping of sales offices"],e:"This definition is repeated in the SD, MM and PP decks, so it is very likely to be examined."},
+{n:6,q:"In SAP terminology, a factory corresponds to a:",o:["Plant","Storage location","Business area","Division"],e:"A warehouse corresponds to a storage location; an enterprise corresponds to the client."},
+{n:6,q:"In SAP terminology, a warehouse corresponds to a:",o:["Storage location","Plant","Shipping point","Sales office"],e:"Storage locations differentiate the various stocks of a material inside one plant."},
+{n:6,q:"The logistics hierarchy is:",o:["Client, then Company Code, then Plant, then Storage Location","Company Code, then Client, then Plant","Plant, then Client, then Company Code","Client, then Plant, then Company Code"],e:"Two company codes can sit under one client, and several plants under one company code."},
+{n:6,q:"A purchasing organization may be arranged as:",o:["Central, cross-plant or plant-specific","Plant-specific only","Central only","One per storage location"],e:"A central purchasing organization sits above several company codes."},
+{n:6,q:"The sales hierarchy runs:",o:["Company Code, then Sales Organization, then Distribution Channel, then Division","Client, then Division, then Sales Organization","Sales Organization, then Company Code, then Division","Division, then Distribution Channel, then Sales Organization"],e:"A sales area is one combination taken across these three sales levels."},
+{n:6,q:"A sales area is the combination of:",o:["Sales organization, distribution channel and division","Company code, plant and storage location","Sales office, sales group and sales person","Client, company code and sales organization"],e:"The sales area determines the conditions, such as pricing, that apply to a sales activity."},
+{n:6,q:"The accounting hierarchy taught in the course is:",o:["Client, then Controlling Area, then Chart of Accounts, then Company Codes","Client, then Company Code, then Controlling Area","Company Code, then Chart of Accounts, then Client","Controlling Area, then Client, then Company Code"],e:"One controlling area can span several company codes sharing a chart of accounts."},
+{n:6,q:"In Human Capital Management, personnel subareas sit directly beneath:",o:["Personnel areas","The client","The company code","The controlling area"],e:"Client, then company code, then personnel area, then personnel subarea."},
+{n:6,q:"Master data is best described as:",o:["Static data, stored for a long time and seldom changed","Data generated by every business transaction","Data that defines the enterprise structure","Temporary data deleted at period end"],e:"Customer, material, vendor and condition records are the standard examples."},
+{n:6,q:"Material master data is stored in functional segments called:",o:["Views","Ledgers","Areas","Channels"],e:"Basic, sales, purchasing, material planning, forecasting, storage, quality, controlling and accounting data."},
+{n:6,q:"In the material master, name, weight and unit of measure are held at:",o:["Client level, because they are relevant for the entire organization","Sales organization level","Storage location level","Company code level"],e:"Delivering plant and loading group are sales-org specific; stock quantity is storage-location specific."},
+{n:6,q:"In the material master, stock quantity is held at:",o:["Storage location level","Client level","Sales organization level","Plant level only"],e:"Different storage locations of the same plant hold different quantities of the same material."},
+{n:6,q:"Process data is best described as:",o:["Dynamic data created during a business process","Data that never changes","The enterprise structure","A list of general ledger accounts"],e:"It contains organizational level data, master data and situational data together."},
+{n:6,q:"For a sales order, date, time, person and amount are examples of:",o:["Situational data","Organizational data","Master data","Condition data"],e:"Client, company code and sales organization are the organizational level; customer and material are master data."},
+{n:6,q:"A document in SAP is:",o:["Generated data that documents a business process in the system","A printed report only","A synonym for master data","A configuration setting"],e:"Sales order, purchasing order, material document and financial document are the examples given."},
+{n:6,q:"Which sequence matches the SAP document flow shown in the course?",o:["Inquiry, Quotation, Standard Order, Outbound Delivery, Picking, Goods Issue, Invoice, Accounting Document","Quotation, Inquiry, Order, Invoice, Delivery","Requisition, Purchase Order, Goods Receipt, Payment","Order, Delivery, Inquiry, Quotation, Invoice"],e:"The third option is the procurement chain, not the sales one. SAP revises the status on every change."},
+
+/* ---------------- 7. S/4HANA ---------------- */
+{n:7,q:"SAP S/4HANA stands for:",o:["Suite for HANA","Systems for HANA","Standard for HANA","Solution for HANA"],e:"It is described as the next generation Business Suite and the biggest innovation since SAP R/3."},
+{n:7,q:"SAP S/4HANA was released in:",o:["2015","2011","2013","2004"],e:"R/2 1979, R/3 1992, SAP ERP 2004, S/4HANA 2015."},
+{n:7,q:"Which sequence of SAP generations is correct?",o:["R/2, R/3, ERP, S/4HANA","R/3, R/2, ERP, S/4HANA","ERP, R/2, R/3, S/4HANA","R/2, ERP, R/3, S/4HANA"],e:"The years attached are 1979, 1992, 2004 and 2015."},
+{n:7,q:"SAP's first in-memory computing product, the SAP HANA platform, appeared in:",o:["2011","2009","2013","2015"],e:"It made data access possible in seconds."},
+{n:7,q:"The SAP Business Suite moved onto HANA in:",o:["2013","2011","2009","2015"],e:"It was then described as the fastest growing product in the history of enterprise software."},
+{n:7,q:"Business Suite 7, aimed at optimising business performance and reducing IT costs, was launched in:",o:["2009","2002","2011","2013"],e:"The release of SAP ERP had been announced in 2005/06."},
+{n:7,q:"SAP formed a partnership with Microsoft, connecting R/3 with Windows NT, in:",o:["1993/94","1986-89","1995/96","2002"],e:"IBM adopted R/3 in the same period; SAP joined the Internet in 1995/96."},
+{n:7,q:"SAP presented at CeBIT Hanover and developed R/3 during:",o:["1986 to 1989","1981 to 1982","1993 to 1994","1995 to 1996"],e:"R/2 had been introduced in 1981/82."},
+{n:7,q:"By its 30th birthday in 2002, SAP was described as:",o:["The third-largest independent software provider","The largest database vendor","A private start-up","A subsidiary of IBM"],e:"The same description appears in the Introduction to SAP deck."},
+{n:7,q:"The user interface used to interact with the S/4HANA system in this course is:",o:["SAP Fiori","SAP GUI Classic","NetWeaver Portal","SAP Business One"],e:"The course uses S/4HANA 2022 with Fiori 3.0 and the Global Bike 4.2 curriculum."},
+{n:7,q:"Which statement about S/4HANA master data is made in the course?",o:["Master data is managed centrally, for example partners, customers and vendors","Master data is duplicated per module","Master data is stored only in the Fiori layer","Master data is not used in S/4HANA"],e:"S/4HANA connects people, business networks and devices and works in real time."},
+
+/* ---------------- 8. SD ---------------- */
+{n:8,q:"The credit control area is the organizational entity that:",o:["Grants and monitors a credit limit for customers","Groups materials for sales purposes","Determines the delivering plant","Maintains the chart of accounts"],e:"It can include one or more company codes."},
+{n:8,q:"Typical examples of distribution channels are:",o:["Wholesale, retail and direct sales","Bicycles and accessories","Assembly, packaging and inspection","Raw materials and finished goods"],e:"A division groups the products themselves; a distribution channel is how they reach the customer."},
+{n:8,q:"A division is defined as:",o:["A way of grouping materials, products or services","The route by which products reach the customer","A legal entity with its own books","A physical shipping location"],e:"In Global Bike the divisions are Bicycles and Accessories."},
+{n:8,q:"The sales area determines:",o:["The conditions, such as pricing, that apply to sales activities","The legal set of books","The production capacity","The storage location of the stock"],e:"It is the combination of sales organization, distribution channel and division."},
+{n:8,q:"In SD, the plant is referred to as the:",o:["Delivering plant, from which goods are sent to the customer","Receiving plant","Producing plant only","Purchasing plant"],e:"The delivering plant is also recorded in the sales-org view of the material master."},
+{n:8,q:"Which group are all additional SD organizational units?",o:["Shipping point, loading point, sales office, sales group and sales person","Plant, storage location and purchasing group","Work center, routing and product group","Controlling area and chart of accounts"],e:"They sit alongside the core sales area units rather than replacing them."},
+{n:8,q:"The customer master record is created:",o:["By sales area","At plant level","At storage location level","At controlling area level"],e:"Sales organization, distribution channel and division together define the sales area."},
+{n:8,q:"The customer master is divided into which three areas?",o:["General data, company code data and sales area data","General data, purchasing data and accounting data","Basic data, sales data and storage data","Client data, plant data and division data"],e:"The second option describes the vendor master instead."},
+{n:8,q:"Account management, payment and bank details of a customer are held in:",o:["The company code specific view","The client level general view","The sales area specific view","The material master"],e:"Sales office and currency sit in the sales area view; name and address at client level."},
+{n:8,q:"Which statement about customer master records is correct?",o:["Every customer must have a master record","Only credit customers need a master record","Master records are optional for internet sales","One master record covers all sales areas automatically"],e:"It contains everything needed for orders, deliveries, invoices and customer payment."},
+{n:8,q:"Condition master data covers:",o:["Prices, surcharges, discounts, freights and taxes","Only list prices","Only customer addresses","Only delivery dates"],e:"Conditions can be material specific, customer specific, or dependent on any document field."},
+{n:8,q:"Output in SD is information sent to the customer by:",o:["E-mail, mail or EDI","Only printed post","Only through the SAP GUI","Only by telephone"],e:"Examples of output are the quotation, the order confirmation and the invoice."},
+{n:8,q:"The SD process taught in the course is:",o:["Order-to-Cash","Procure-to-Pay","Plan-to-Produce","Record-to-Report"],e:"MM covers Procure-to-Pay; PP covers material planning through manufacturing execution."},
+{n:8,q:"In the Global Bike structure, US West and US East are:",o:["Sales organizations","Company codes","Plants","Divisions"],e:"San Diego, Dallas and Miami appear beneath them as sales offices."},
+
+/* ---------------- 9. MM ---------------- */
+{n:9,q:"A plant is defined as:",o:["An operating area or branch: a manufacturing, distribution, purchasing or maintenance facility","A legal entity with its own books","A grouping of materials","A buyer or group of buyers"],e:"It is not restricted to manufacturing, which is a common misreading."},
+{n:9,q:"A storage location is an organizational unit that:",o:["Allows differentiation between the various stocks of a material in a plant","Groups several plants together","Defines the legal books of a company","Represents a buyer of materials"],e:"Global Bike uses raw materials, semi-finished, finished goods, trading goods and miscellaneous."},
+{n:9,q:"The purchasing organization is the unit that:",o:["Procures materials and services and negotiates purchase conditions with vendors","Physically stores the goods","Issues the customer invoice","Plans production capacity"],e:"The buying activity for a plant takes place at the purchasing organization."},
+{n:9,q:"The purchasing group is best described as:",o:["The buyer or group of buyers responsible for certain purchasing activities","An organizational level above the purchasing organization","A grouping of materials","A storage location for purchased goods"],e:"It is also the channel of communication for vendors, not a hierarchy level."},
+{n:9,q:"Which statement about vendor master records is correct?",o:["Every vendor must have a master record","Only foreign vendors need one","They are maintained only by Accounting","They are created per storage location"],e:"They are used and maintained primarily by the Purchasing and Accounting departments."},
+{n:9,q:"Vendor master data is divided into:",o:["General data, company code data and purchasing organization data","General data, company code data and sales area data","Basic, forecasting and quality data","Client, division and channel data"],e:"The second option describes the customer master instead."},
+{n:9,q:"The reconciliation account, terms of payment and bank account of a vendor sit in:",o:["The company code view, which is Financial Accounting data","The client level general view","The purchasing organization view","The material master"],e:"Purchasing currency, salesman's name and vendor partners sit in the purchasing organization view."},
+{n:9,q:"Address, vendor number and preferred communication of a vendor are held at:",o:["Client level, as general data","Company code level","Purchasing organization level","Plant level"],e:"General data is relevant for the entire organization."},
+{n:9,q:"Which set lists MM master data?",o:["Vendor master, material master, purchasing info record, condition master and output master","Customer master, material master and sales conditions","Bill of materials, routing and work center","Client, company code, plant and storage location"],e:"The third set is PP master data; the fourth is organizational data."},
+{n:9,q:"The MM process taught in the course is:",o:["Procure-to-Pay","Order-to-Cash","Manufacturing execution","Record-to-Report"],e:"Requisition, purchase order, goods receipt, invoice receipt and payment."},
+{n:9,q:"In the Global Bike logistics structure, GL00 is the:",o:["Central purchasing organization, positioned globally above the company codes","Company code for Germany","Plant in Hamburg","Purchasing group for Europe"],e:"US00 and DE00 are the country purchasing organizations; N00 and E00 are purchasing groups."},
+
+/* ---------------- 10. PP ---------------- */
+{n:10,q:"Which set lists the PP organizational structure?",o:["Client, company code, plant, storage location and work center locations","Client, company code, sales organization and division","Purchasing organization and purchasing group","Controlling area and chart of accounts"],e:"Work center locations are organizational in nature but held as master data in the system."},
+{n:10,q:"A work center is defined as an organizational unit that:",o:["Defines where and when an operation is performed","Stores finished goods","Groups materials for planning","Issues purchase orders"],e:"It has an available capacity, and its activities are valuated by charge rates."},
+{n:10,q:"Work center activities are valuated by charge rates determined by:",o:["Cost centers and activity types","Sales conditions","Purchasing info records","Material master views"],e:"This is the link from Production Planning into Controlling."},
+{n:10,q:"A work center can be:",o:["A machine, a person, a production line or a group of craftsmen","Only a machine","Only a physical building","Only a storage area"],e:"Global Bike uses Assembly, Packaging and Inspection as work center locations."},
+{n:10,q:"Which set lists PP master data?",o:["Material, bill of materials, routing, work center and product group","Customer, vendor, condition and output","Client, company code, plant and storage location","Inquiry, quotation, order and invoice"],e:"The third set is organizational data and the fourth is documents."},
+{n:10,q:"A bill of materials is:",o:["A list of the components that make up a product or assembly","A sequence of operations with times","A list of approved vendors","A production schedule by week"],e:"The sequence of operations is the routing, which is separate PP master data."},
+{n:10,q:"A single-level bill of materials shows:",o:["Only the immediate components of the finished product","Every component down to the smallest raw material","Only purchased parts","Only the sub-assemblies, not the finished product"],e:"A multi-level BOM also explodes the sub-assemblies, for example the wheel assembly into tire, tube, hex nut and bolt."},
+{n:10,q:"The three PP processes covered in the course are:",o:["Material planning, production planning and manufacturing execution","Order-to-cash, procure-to-pay and record-to-report","Forecasting, aggregate planning and scheduling","Inquiry, quotation and delivery"],e:"They sit downstream of material planning in the integrated process."},
+{n:10,q:"In the integrated business process, if finished goods are insufficient the next step is to:",o:["Request and authorise production, then check whether raw materials are sufficient","Reject the customer order","Issue the invoice anyway","Ask the customer to reorder later"],e:"If raw materials are also short, procurement is triggered: requisition, purchase order, receive shipment."},
+
+/* ---------------- 8. SD, Order-to-Cash ---------------- */
+{n:8,q:"Which sequence is the Sales Order Process cycle taught in the SD unit?",o:["Pre-sales activities, sales order entry, check availability, pick, pack, post goods issue, invoice, receipt of payment","Sales order entry, invoice, pick, pack, goods issue, payment","Purchase requisition, vendor selection, purchase order, goods receipt","Inquiry, production order, goods receipt, invoice"],e:"Note that availability is checked after order entry and before picking."},
+{n:8,q:"Pre-sales activities in SD are also referred to as:",o:["Sales Support, or CRM Light","Order-to-Cash","Sales Area determination","Credit control"],e:"It covers phone call records, on-site meetings, letters and campaign communication."},
+{n:8,q:"The two pre-sales documents that must be managed are:",o:["Inquiries and quotations","Orders and deliveries","Invoices and payments","Contracts and schedule lines"],e:"They help identify possible sales activity and determine sales probability."},
+{n:8,q:"An inquiry is:",o:["A customer request for information or a quotation, with no obligation to purchase","A legally binding offer from the seller","An internal request to the purchasing department","A confirmation that goods have shipped"],e:"It may contain specific quantities and dates and asks how much it will cost and whether the material is available."},
+{n:8,q:"A quotation presented to a customer is:",o:["A legally binding offer to deliver specific products at a pre-defined price within a specified timeframe","A non-binding estimate","An internal planning document","The same document as the sales order"],e:"This binding versus non-binding distinction against the inquiry is a classic exam point."},
+{n:8,q:"A sales document is made up of which three primary areas?",o:["Header, line items and schedule lines","General, company code and sales area data","Basic, sales and storage data","Inquiry, quotation and order"],e:"The second option is the customer master structure, not the sales document structure."},
+{n:8,q:"A schedule line in a sales document:",o:["Belongs uniquely to one line item and carries delivery quantities and dates for partial deliveries","Holds data relevant to the entire order","Records the customer's bank details","Replaces the line item"],e:"Header data covers the whole order; line item data covers one material."},
+{n:8,q:"Which of these is determined by the system for each sales order?",o:["The availability check and the transfer of requirements to MRP","The vendor evaluation score","The routing of the finished product","The chart of accounts"],e:"Also delivery scheduling, shipping point and route determination, pricing and the credit limit check."},
+{n:8,q:"In SD, ATP stands for:",o:["Availability to Promise","Actual Transfer Price","Automatic Transport Planning","ApprovedTicket Processing"],e:"The material availability date is determined using the delivery timeline."},
+{n:8,q:"SAP first attempts to schedule a delivery using:",o:["Backward scheduling from the requested delivery date","Forward scheduling from the order date","The shortest transit route","The vendor lead time"],e:"If backward scheduling shows the date cannot be met, the system switches to forward scheduling and proposes a new delivery date."},
+{n:8,q:"In backward scheduling, counting back from the requested delivery date, the first time element deducted is:",o:["Transit time","Pick and pack time","Loading time","Transportation scheduling time"],e:"Order of deduction: transit, loading, transportation scheduling, then pick and pack, giving the material availability date."},
+{n:8,q:"The availability check proposes which three methods of delivery?",o:["One-time delivery, complete delivery and delayed proposal","Standard, express and economy","Forward, backward and mixed","Partial, full and rejected"],e:"It considers all inward and outward inventory movements, and the rules are defined by the user."},
+
+/* ---------------- 9. MM, Procure-to-Pay ---------------- */
+{n:9,q:"Which sequence is the Procure-to-Pay cycle taught in the MM unit?",o:["Purchase requisition, vendor selection, purchase order, notify vendor, vendor shipment, goods receipt, invoice receipt, payment to vendor","Purchase order, requisition, goods receipt, payment","Inquiry, quotation, order, delivery, invoice","Planned order, production order, goods issue, settlement"],e:"Vendor selection sits between the requisition and the purchase order."},
+{n:9,q:"A purchase requisition is:",o:["An internal document instructing the purchasing department to request a good or service for a specified time","An external order sent to the vendor","A vendor's binding offer","A record of goods received"],e:"The purchase order, not the requisition, is what goes to the vendor."},
+{n:9,q:"Purchase requisitions can be created:",o:["Directly and manually, or indirectly and automatically from MRP, production, maintenance or sales orders","Only manually by a buyer","Only automatically by MRP","Only by the vendor"],e:"When created manually the person determines what, how much and when."},
+{n:9,q:"Which of these is a way of determining the source of supply for a requisition?",o:["The source list","The bill of materials","The routing","The credit control area"],e:"The others are internal sourcing, outline agreements and requests for quotation."},
+{n:9,q:"A source list is:",o:["A record specifying the allowed means of procuring a material for a certain plant within a given time period","A list of all vendors in the client","A ranking of vendors by evaluation score","A list of materials a vendor has supplied"],e:"If it contains a sole source the system assigns that vendor automatically; if none is established it reverts to info records and outline agreements."},
+{n:9,q:"If an internal plant is identified as the source of supply, the requirement is covered by:",o:["A stock transport order","A purchase order to an external vendor","A request for quotation","A production order"],e:"For example a centralized warehouse within the same firm."},
+{n:9,q:"Outline agreements are subdivided into:",o:["Contracts and scheduling agreements","Inquiries and quotations","Source lists and info records","Requisitions and orders"],e:"Contracts may be quantity or value based; scheduling agreements spread a total quantity over a delivery schedule."},
+{n:9,q:"A request for quotation is:",o:["An invitation from a purchasing organization to a vendor to submit a bid","An internal request to the warehouse","A binding order to the vendor","A confirmation of goods received"],e:"Accepted quotations generate purchasing information records."},
+{n:9,q:"In SAP, the RFQ and the vendor's quotation are:",o:["A single document: the vendor's response is entered in the RFQ you created","Two entirely separate documents with no link","Merged only after the purchase order is issued","Stored in the material master"],e:"The quotation received is a legally binding offer for a predefined period."},
+{n:9,q:"The purchasing information record contains:",o:["The relationship between a vendor and a material, and serves as default information for purchase orders","Only the vendor's address","Only the material's weight and unit of measure","The customer's credit limit"],e:"It holds pricing and conditions, the last purchase order, delivery tolerance limits, lead times, availability periods and vendor evaluation data."},
+{n:9,q:"A purchasing information record can be created:",o:["Manually, or automatically from quotations or purchase orders","Only manually","Only by the vendor","Only during the goods receipt"],e:"It is built from the material master and the vendor master together."},
+{n:9,q:"SAP vendor evaluation supports a maximum of:",o:["99 main criteria with 20 sub-criteria for each","20 main criteria with 99 sub-criteria for each","10 main criteria only","Unlimited criteria"],e:"The main criteria illustrated are price, quality and delivery, with a scoring range of 1 to 100 and weight factors."},
+
+/* ---------------- 10. PP, master data and processes ---------------- */
+{n:10,q:"A variant bill of materials is used when:",o:["Several products share a large proportion of identical parts","A product has only one component","The BOM has more than three levels","Production is made to order only"],e:"For example a deluxe and a professional bike differing only in wheel and frame."},
+{n:10,q:"Which of these is a BOM item category?",o:["Phantom material, listed as an intra item","Planned order","Work center","Routing operation"],e:"The categories are stock item, non-stock item, variable material, intra item (phantom), class item (placeholder), document item and text item."},
+{n:10,q:"A routing is:",o:["A series of sequential operations that must be carried out to produce a product","A list of the components of a product","A location where an operation is performed","A grouping of materials for planning"],e:"Routings are used as a template for production orders and run schedules and as a basis for product costing."},
+{n:10,q:"A routing is said to contain:",o:["What, where, when and how","Who, why and how much","Only the operation times","Only the components consumed"],e:"Each operation names a work center, a control key, a description, a time and an activity type."},
+{n:10,q:"A work center is defined in the PP unit as:",o:["A location within a plant where value-added work, that is operations or activities, is performed","A place where finished goods are stored","A grouping of materials for aggregate planning","A document recording a business transaction"],e:"It can represent people or groups of people, machines or groups of machines, and assembly lines."},
+{n:10,q:"Which capacities can be defined on a work center?",o:["Labor, machine, output and emissions","Only labor hours","Only machine hours","Only storage volume"],e:"These capacities are used in capacity requirements planning, detailed scheduling and costing."},
+{n:10,q:"Which is one of the resource-related data groups captured on a work center?",o:["Scheduling information, such as queue and move times and formula keys","Bill of materials explosion","Vendor evaluation scores","Credit control data"],e:"The groups are basic, scheduling, costing, personnel, capacity planning and default data."},
+{n:10,q:"A product group is used for:",o:["Aggregate planning, grouping materials or other product groups into product families","Listing the operations to make a product","Recording the vendor of a material","Defining storage bins"],e:"Product groups may be single or multi-level, but the lowest level must always consist of materials."},
+{n:10,q:"Which sequence matches Production Planning and Execution in the PP unit?",o:["Forecasting, sales and operations planning, demand management, MPS, MRP, then manufacturing execution and order settlement","MRP, MPS, demand management, forecasting","Demand management, forecasting, MRP, MPS","Order settlement, MRP, MPS, forecasting"],e:"Forecasting and SOP are strategic planning; MPS and MRP are detailed planning."},
+{n:10,q:"In the players diagram, the MRP controller and capacity planners belong to:",o:["Detailed planning","Strategic planning","Execution","Order settlement"],e:"Strategic planning involves the CEO, COO, CIO, CFO, controller and marketing director; execution involves line workers and shop floor supervisors."},
+{n:10,q:"Which statement about forecasting is made in the PP unit?",o:["Forecasts are always wrong, and forecasting is the foundation of a reliable SOP","Forecasts are accurate if enough data is used","Forecasting is unnecessary once MRP is running","Overstocking is always preferable to understocking"],e:"Overstocked and understocked warehouses result in the same thing: a loss in profits."},
+{n:10,q:"The forecast models offered are:",o:["Trend, seasonal, trend and seasonal, and constant","Linear, quadratic and exponential only","Static, periodic and optimum","MTS, MTO and configurable"],e:"A model can be selected automatically or manually."},
+{n:10,q:"Sales and Operations Planning usually consists of which three steps?",o:["Sales plan, production plan and rough cut capacity plan","Forecast, MPS and MRP","Requisition, order and receipt","Planned order, production order and settlement"],e:"SOP is planned at an aggregate level in time buckets."},
+{n:10,q:"Demand Management is:",o:["The link between strategic planning (SOP) and detailed planning (MPS and MRP)","The final step of manufacturing execution","A synonym for forecasting","The process of evaluating vendors"],e:"Its result is the Demand Program, generated from independent requirements."},
+{n:10,q:"The Demand Program is generated from:",o:["Planned independent requirements and customer independent requirements","Purchase requisitions and purchase orders","Routings and bills of materials","Source lists and outline agreements"],e:"PIR comes from the forecast side, CIR from the sales side."},
+{n:10,q:"Which planning strategy group is driven by sales orders?",o:["Make-to-order, using customer orders","Make-to-stock, using independent requirements","Consumption-based planning","Reorder point planning"],e:"MTS strategies include 10, 11, 30 and 40; MTO strategies include 20, 50 and 60."},
+{n:10,q:"Master Production Scheduling allows a company to:",o:["Distinguish planning methods between materials that strongly influence profit or use critical resources and those that do not","Calculate the economic order quantity","Evaluate vendor performance","Determine the shipping route"],e:"MPS sits between demand management and MRP in the detailed planning block."},
+{n:10,q:"MRP calculates net requirements by considering:",o:["Available warehouse stock and scheduled receipts from purchasing and production","Only the gross requirement","Only the safety stock","Only the vendor lead time"],e:"During MRP all levels of the bill of material are planned, and the output is a detailed production and/or purchasing plan."},
+{n:10,q:"The five logical steps of MRP are:",o:["Net requirements calculation, lot size calculation, procurement type, scheduling and BOM explosion","Forecast, SOP, demand management, MPS and MRP","Requisition, sourcing, order, receipt and payment","Release, goods issue, confirmation, goods receipt and settlement"],e:"MRP ensures material availability based on the need generated by MPS or the Demand Program."},
+{n:10,q:"Independent demand is best described as:",o:["Demand whose original source is the item itself","Demand whose source resides at another level","Demand generated only by MRP","Demand that is always forecast"],e:"Dependent demand is derived from a higher level, such as components pulled by a finished product."},
+{n:10,q:"In lot sizing, the periodic procedure:",o:["Groups net requirements together from multiple periods","Uses fixed values from the material master","Calculates the optimum lot size over several periods","Always orders exactly the net requirement of one period"],e:"Static uses fixed material master values; optimum calculates the best lot size across several periods of net requirements."},
+{n:10,q:"Which set belongs to internal procurement?",o:["Planned order, production order and process order","Purchase requisition, purchase order and schedule line","Source list, outline agreement and RFQ","Inquiry, quotation and sales order"],e:"External procurement uses purchase requisitions, purchase orders and schedule lines."},
+{n:10,q:"Whether a material is planned by MRP or consumption-based planning is determined by:",o:["The MRP type on the MRP1 screen of the material master","The plant in which it is stored","The vendor supplying it","The routing assigned to it"],e:"PD is MRP and VSD seasonal MRP; VB is reorder point, VV forecast based and RP replenishment."},
+{n:10,q:"Which MRP type is consumption-based rather than MRP?",o:["VB, reorder point","PD, MRP","VSD, seasonal MRP","None of them"],e:"Consumption-based types are VB reorder point, VV forecast based and RP replenishment."},
+{n:10,q:"A planned order produced by an MRP run is converted into:",o:["A production order for in-house production, or a purchase requisition for external procurement","An invoice","A sales order","A material document"],e:"Purchase requisitions then become purchase orders or schedule lines."},
+{n:10,q:"Which pairing of order type and phase is correct?",o:["Planned order is planning; production order and purchase order are execution","Planned order is execution; production order is planning","All three are planning documents","All three are execution documents"],e:"A planned order is a request created in the planning run that converts into either a production or a purchase order."},
+{n:10,q:"A production order is best defined as:",o:["An internal request or instruction to produce a specific product at a specific time","An instruction to a vendor to supply a material","A request created in the planning run for the future","A record of goods received into the warehouse"],e:"The instruction to a vendor is the purchase order."},
+{n:10,q:"Which sequence matches the Manufacturing Execution Process?",o:["Production proposal, capacity planning, schedule and release, shop floor documents, goods issue, completion confirmation, goods receipt, order settlement","Goods receipt, goods issue, release, settlement, capacity planning","Requisition, order, shipment, receipt, payment","Forecast, SOP, MPS, MRP, planned order"],e:"Order settlement closes the cycle and feeds back into the next production proposal."},
+
+/* ---------------- 7. S/4HANA, what is new and transition ---------------- */
+{n:7,q:"The four drivers of change behind digital transformation are given as:",o:["Customer, companies, technology and research","People, process, product and price","Cloud, mobile, social and analytics","Efficiency, effectiveness, agility and speed"],e:"Technology covers IoT, cloud, big data and mobility; research covers simulation, forecasting and new possibilities."},
+{n:7,q:"S/4HANA is described in the Fast Facts section as:",o:["The digital core of the company that enables digital transformation","A reporting add-on for SAP ERP","A replacement for SAP Fiori","A database migration tool"],e:"ERP plus any database is simplified into S/4HANA, which then runs in the cloud or on-premise."},
+{n:7,q:"Which is true about S/4HANA deployment?",o:["Cloud and on-premise can be used hybridly without losing the company's integration","Only cloud deployment is possible","Only on-premise deployment is possible","Cloud and on-premise cannot exchange data"],e:"Migration of existing SAP Business Suite customers is also possible."},
+{n:7,q:"Under the S/4HANA Cloud Edition, licensing and maintenance work as follows:",o:["Subscription licensing, deployment in the private cloud, maintained by SAP, with automatic quarterly innovation upgrades","Traditional licensing with the customer controlling maintenance","Perpetual licence with hardware at the company's own location","No licence is required"],e:"Cloud offers in-app extensibility with limited ABAP; on-premise allows traditional ABAP extensibility up to core modification."},
+{n:7,q:"Which characteristic belongs to S/4HANA On-Premise rather than Cloud?",o:["Hardware at the company's location, privately controlled data and fewer release cycles","Automatic quarterly innovation upgrades","Subscription licensing","Maintenance controlled by SAP"],e:"On-premise gives private control of deployment and maintenance and allows individual requirements."},
+{n:7,q:"The three optimization levers named in the S/4HANA deck are:",o:["Efficiency, effectiveness and agility","Cost, quality and speed","People, process and technology","Cloud, on-premise and hybrid"],e:"Efficiency accelerates execution, effectiveness speeds up and de-layers the process, agility assimilates process innovation."},
+{n:7,q:"In real-time inventory management, the IT side of the optimization is described as:",o:["One document table instead of 26 aggregate tables","Twenty-six document tables instead of one","Separation of data entities into different tables","Additional indices for faster reads"],e:"It also removes locking issues, allows parallel postings and reduces the memory footprint."},
+{n:7,q:"Accelerated Material Requirements Planning in S/4HANA is enabled on the IT side by:",o:["A single source of truth and the merging of OLAP and OLTP","Separate analytical and transactional databases","More redundant aggregate tables","Nightly batch consolidation only"],e:"On the business side this gives real-time data, MRP run on request and system-based recommendations."},
+{n:7,q:"OLTP and OLAP stand for:",o:["Online Transaction Processing and Online Analytical Processing","Offline Transfer Protocol and Online Access Portal","Open Ledger Transaction Platform and Open Line Analysis Program","Operational Load Testing and Operational Log Analysis"],e:"S/4HANA runs both together, giving real-time analytics on current data."},
+{n:7,q:"Which set describes what the in-memory database brings to S/4HANA?",o:["Column store, in-memory processing, compression and parallel processing","Row store, disk caching and nightly batch loads","Hardware dependence and fixed indices","Separate OLTP and OLAP systems"],e:"Fiori adds hardware independence and mobile devices; OLAP plus OLTP adds real-time analytics."},
+{n:7,q:"In the data compression example, a customer system shrank from:",o:["593 GB on a traditional database to 118.6 GB on HANA and 42.4 GB on S/4HANA","42.4 GB to 593 GB","118.6 GB to 593 GB","593 GB to 500 GB"],e:"A typical booking transaction that addressed 15 tables now impacts only 4."},
+{n:7,q:"The S/4HANA data model differs from a traditional database architecture because it:",o:["Stores data in denormalized form as a single source, with aggregation computed on the fly","Uses strict third normal form to avoid all redundancy","Adds more aggregate tables for performance","Keeps analytics in a separate warehouse only"],e:"Traditional normalized modelling relied on redundant data for aggregation, which was costly to keep updated."},
+{n:7,q:"SAP Fiori offers which three application types?",o:["Transactional apps, analytical apps and factsheets","Create, read and update apps","Desktop, tablet and phone apps","Cloud, on-premise and hybrid apps"],e:"Transactional apps give guided access to create, change or display; analytical apps give a visual overview; factsheets show essential information about objects."},
+{n:7,q:"The three transition scenarios to SAP S/4HANA are:",o:["New implementation, system conversion and landscape transformation","Upgrade, patch and hotfix","Greenfield, bluefield and redfield","Cloud, on-premise and hybrid"],e:"New implementation starts from an ERP or a non-SAP system; system conversion applies to an existing ERP system."},
+{n:7,q:"The new implementation scenario is also known as the:",o:["Greenfield approach","Brownfield approach","Rolling approach","Parallel approach"],e:"It suits customers migrating a legacy system, and benefits include reengineering and process simplification on ready-to-run processes."},
+{n:7,q:"The migration tools named for a new implementation are:",o:["SAP Data Services for on-premise and SAP Landscape Transformation for cloud","SAP Fiori for on-premise and ABAP for cloud","SAP NetWeaver for both","SAP BW/4HANA for both"],e:"The two steps are installing S/4HANA and then the initial data load from the source system."},
+{n:7,q:"In a system conversion, what happens in one step?",o:["The database, SAP NetWeaver and the application all transition together","Only the database is migrated","Only the user interface is replaced","Only custom code is rewritten"],e:"Benefits: migration without re-implementation and no disruption to existing business processes."},
+{n:7,q:"The three steps of a system conversion are:",o:["Check add-ons and other solutions, check components and customer code, then run the conversion","Install, load data, then go live","Consolidate, transform, then settle","Forecast, plan, then execute"],e:"The checks validate compatibility and further prerequisites before conversion."},
+{n:7,q:"Landscape transformation is chosen by customers who want to:",o:["Consolidate their landscape or selectively transform data into an S/4HANA system","Convert one existing ERP system in a single step","Start completely from scratch on a legacy system","Remain on SAP Business Suite indefinitely"],e:"The tool used is SAP Landscape Transformation, and Central Finance is given as a selective migration example."},
+{n:7,q:"The relationship between SAP HANA and SAP NetWeaver is best described as:",o:["Complementary: NetWeaver is an integrated technology platform, HANA is an in-memory database platform","Mutually exclusive: HANA replaces NetWeaver entirely","Identical: they are two names for the same product","Sequential: NetWeaver always runs on top of BW/4HANA"],e:"NetWeaver supports both ABAP and Java and covers the application server, BI, portal, process integration and master data management."},
+{n:7,q:"In the S/4HANA architecture diagram, the layer that sits between the application core and the HANA platform is the:",o:["Virtual Data Model, implemented with CDS","Fiori Launchpad","Data Lake","XS Engine"],e:"The Fiori Launchpad sits at the top, and the data lake with big data sources sits at the bottom."}
+];
+
+/* ---------------- app ---------------- */
+const stage=document.getElementById('stage');
+const counterEl=document.getElementById('counter');
+const scoreEl=document.getElementById('score');
+const fillEl=document.getElementById('fill');
+const LS='bpr-drill-wrong';
+
+let selected=new Set(Object.keys(NOTES).map(Number));
+let autoNext=true;
+let queue=[],idx=0,hits=0,misses=0,missed=[],locked=false,timer=null;
+
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const countFor=n=>BANK.filter(q=>q.n===n).length;
+const savedWrong=()=>{try{return JSON.parse(localStorage.getItem(LS)||'[]');}catch(e){return[];}};
+const saveWrong=list=>{try{localStorage.setItem(LS,JSON.stringify(list));}catch(e){}};
+
+function setRail(show){
+  if(!show){counterEl.textContent='';scoreEl.textContent='';fillEl.style.width='0';return;}
+  counterEl.innerHTML='Q <b>'+(idx+1)+'</b> / '+queue.length;
+  scoreEl.innerHTML='<span class="hit">'+hits+' correct</span> &nbsp;/&nbsp; <span class="miss">'+misses+' wrong</span>'+
+    (hits+misses?' &nbsp;&middot;&nbsp; '+Math.round(hits/(hits+misses)*100)+'%':'');
+  fillEl.style.width=(idx/queue.length*100)+'%';
+}
+
+function start(){
+  clearTimeout(timer);
+  const wrongIds=savedWrong();
+  setRail(false);
+  const chips=Object.keys(NOTES).map(k=>{
+    const n=Number(k);
+    return '<button class="chip" type="button" data-note="'+n+'" aria-pressed="'+selected.has(n)+'">'+
+      '<span class="num">'+n+'</span><span class="nm">'+NOTES[n]+'</span><span class="ct">'+countFor(n)+'</span></button>';
+  }).join('');
+  stage.innerHTML='<section class="card panel">'+
+    '<div><div class="scope-title">Tomorrow, 10:30 &middot; 40 questions</div>'+
+    '<h1>Drill the ten lecture notes</h1></div>'+
+    '<p class="lede">'+BANK.length+' questions across the full midterm scope, one at a time. '+
+    'Answer with a click or the number keys. Get one wrong and the correct answer stays on screen with '+
+    'the reason, so the miss is where the learning happens.</p>'+
+    '<div class="hr"></div>'+
+    '<div><div class="scope-title">Scope</div><div class="notes">'+chips+'</div></div>'+
+    '<div class="row">'+
+      '<button class="btn btn-ghost" type="button" id="all">All ten</button>'+
+      '<button class="btn btn-ghost" type="button" id="none">Clear</button>'+
+      '<label class="toggle"><input type="checkbox" id="auto" '+(autoNext?'checked':'')+'> Advance automatically when correct</label>'+
+    '</div>'+
+    '<div class="hr"></div>'+
+    '<div class="row">'+
+      '<button class="btn btn-primary" type="button" id="go">Start</button>'+
+      (wrongIds.length?'<button class="btn" type="button" id="redo">Only my '+wrongIds.length+' missed questions</button>':'')+
+      '<span class="hint" id="cnt"></span>'+
+    '</div>'+
+  '</section>';
+
+  const refresh=()=>{
+    const t=BANK.filter(q=>selected.has(q.n)).length;
+    document.getElementById('cnt').textContent=t+' selected';
+    document.getElementById('go').disabled=t===0;
+  };
+  stage.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    const n=Number(c.dataset.note);
+    selected.has(n)?selected.delete(n):selected.add(n);
+    c.setAttribute('aria-pressed',selected.has(n));
+    refresh();
+  }));
+  document.getElementById('all').onclick=()=>{selected=new Set(Object.keys(NOTES).map(Number));start();};
+  document.getElementById('none').onclick=()=>{selected=new Set();start();};
+  document.getElementById('auto').onchange=e=>{autoNext=e.target.checked;};
+  document.getElementById('go').onclick=()=>begin(BANK.filter(q=>selected.has(q.n)));
+  const redo=document.getElementById('redo');
+  if(redo) redo.onclick=()=>{
+    const ids=new Set(savedWrong());
+    const pool=BANK.filter((q,i)=>ids.has(i));
+    if(pool.length) begin(pool);
+  };
+  refresh();
+}
+
+function begin(pool){
+  queue=shuffle(pool.map(q=>({q,i:BANK.indexOf(q)})));
+  idx=0;hits=0;misses=0;missed=[];
+  render();
+}
+
+function render(){
+  clearTimeout(timer);locked=false;
+  if(idx>=queue.length){return results();}
+  const {q}=queue[idx];
+  setRail(true);
+  const opts=shuffle(q.o.map((t,i)=>({t,right:i===0})));
+  const keys=['1','2','3','4'];
+  stage.innerHTML='<section class="card qcard">'+
+    '<div class="eyebrow"><span class="tag">Note '+q.n+'</span><span>'+esc(NOTES[q.n])+'</span></div>'+
+    '<p class="qtext">'+q.q+'</p>'+
+    '<div class="opts" id="opts">'+
+      opts.map((o,i)=>'<button class="opt" type="button" data-right="'+o.right+'" data-i="'+i+'">'+
+        '<span class="key">'+keys[i]+'</span><span class="txt">'+o.t+'</span></button>').join('')+
+    '</div>'+
+    '<div id="fbslot"></div>'+
+  '</section>';
+  stage.querySelectorAll('.opt').forEach(b=>b.addEventListener('click',()=>answer(b)));
+}
+
+function answer(btn){
+  if(locked) return;
+  locked=true;
+  const {q,i:bankIdx}=queue[idx];
+  const right=btn.dataset.right==='true';
+  const all=[...stage.querySelectorAll('.opt')];
+  all.forEach(b=>{
+    b.disabled=true;
+    if(b.dataset.right==='true') b.classList.add('is-right');
+    else if(b===btn) b.classList.add('is-wrong');
+    else b.classList.add('dim');
+  });
+  const correctText=all.find(b=>b.dataset.right==='true').querySelector('.txt').innerHTML;
+
+  if(right){hits++;}
+  else{
+    misses++;
+    missed.push({q,chosen:btn.querySelector('.txt').textContent,correct:correctText});
+    const w=new Set(savedWrong());w.add(bankIdx);saveWrong([...w]);
+  }
+
+  document.getElementById('fbslot').innerHTML=
+    '<div class="fb '+(right?'ok':'no')+'">'+
+      '<div class="fb-head">'+(right?'Correct':'Not quite')+'</div>'+
+      (right?'':'<p class="fb-ans">Correct answer: <b>'+correctText+'</b></p>')+
+      '<p class="fb-why">'+q.e+'</p>'+
+    '</div>'+
+    '<div class="foot" style="margin-top:14px">'+
+      '<span class="hint">Enter or Space for the next question</span>'+
+      '<button class="btn btn-primary" type="button" id="next">'+(idx+1>=queue.length?'See results':'Next')+'</button>'+
+    '</div>';
+  document.getElementById('next').onclick=next;
+  setRail(true);
+  if(right&&autoNext) timer=setTimeout(next,850);
+  else document.getElementById('next').focus({preventScroll:true});
+}
+
+function next(){clearTimeout(timer);idx++;render();}
+
+function results(){
+  setRail(false);
+  const total=hits+misses;
+  const pct=total?Math.round(hits/total*100):0;
+  const byNote={};
+  queue.forEach(({q})=>{byNote[q.n]=byNote[q.n]||{t:0,w:0};byNote[q.n].t++;});
+  missed.forEach(m=>{byNote[m.q.n].w++;});
+  const rows=Object.keys(byNote).sort((a,b)=>a-b).map(n=>{
+    const d=byNote[n],ok=d.t-d.w,p=Math.round(ok/d.t*100);
+    return '<tr><td class="n">'+n+'</td><td>'+NOTES[n]+'</td><td class="n">'+ok+' / '+d.t+
+      '</td><td class="n '+(p>=80?'st':(p<60?'wk':''))+'">'+p+'%</td></tr>';
+  }).join('');
+  const review=missed.length? missed.map(m=>
+    '<div class="rvw-item"><p class="rvw-q">'+m.q.q+'</p>'+
+    '<p class="rvw-a">Correct: <b>'+m.correct+'</b> &mdash; '+m.q.e+'</p></div>').join('')
+    : '<p class="lede">Nothing missed in this run.</p>';
+
+  stage.innerHTML='<section class="card panel">'+
+    '<div><div class="scope-title">Run complete</div><div class="big">'+pct+'%</div></div>'+
+    '<p class="lede">'+hits+' correct out of '+total+'. '+
+    (pct>=85?'That is exam-ready across the notes you drilled.':
+     pct>=70?'Solid. Close the two weakest notes below and run those again.':
+     'Work through the misses below, then rerun only the missed questions.')+'</p>'+
+    '<div class="hr"></div>'+
+    '<div><div class="scope-title">By lecture note</div><div class="tbl-scroll"><table>'+
+      '<thead><tr><th>#</th><th>Note</th><th class="n">Correct</th><th class="n">Rate</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table></div></div>'+
+    '<div class="hr"></div>'+
+    '<div><div class="scope-title">What you missed</div><div class="rvw">'+review+'</div></div>'+
+    '<div class="row">'+
+      (missed.length?'<button class="btn btn-primary" type="button" id="again">Redo these '+missed.length+'</button>':'')+
+      '<button class="btn" type="button" id="home">Change scope</button>'+
+    '</div>'+
+  '</section>';
+  const again=document.getElementById('again');
+  if(again) again.onclick=()=>begin(missed.map(m=>m.q));
+  document.getElementById('home').onclick=start;
+}
+
+document.addEventListener('keydown',e=>{
+  if(!queue.length) return;
+  if((e.key==='Enter'||e.key===' ')&&locked){e.preventDefault();next();return;}
+  if(!locked&&['1','2','3','4'].includes(e.key)){
+    const b=stage.querySelectorAll('.opt')[Number(e.key)-1];
+    if(b) b.click();
+  }
+});
+
+const themeBtn=document.getElementById('theme');
+themeBtn.onclick=()=>{
+  const r=document.documentElement;
+  const cur=r.getAttribute('data-theme');
+  const dark=cur?cur==='dark':window.matchMedia('(prefers-color-scheme:dark)').matches;
+  r.setAttribute('data-theme',dark?'light':'dark');
+};
+
+start();
+</script>
