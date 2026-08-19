@@ -5,6 +5,9 @@ Video (YouTube linki veya yerel dosya) → zaman damgalı transkript → kapsay�
 n8n orkestratör, bu servis işçi. Ağır iş (ffmpeg, transkript, özet) burada koşar;
 n8n sadece tetikler ve sonucu dağıtır.
 
+> **[▶ INE4106 BPR sınav testi — 207 soru, tarayıcıda çalışır](https://alierenarsln.github.io/video-digest/ders-materyali/ine4106-bpr-drill.html)**
+> Ders slaytlarından üretilen çalışma materyalleri [`ders-materyali/`](ders-materyali/) altında.
+
 ## Boru hattı
 
 ```
