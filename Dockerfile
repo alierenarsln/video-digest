@@ -18,6 +18,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# Ders materyali (interaktif testler + study-pack PDF'leri). main.py bunu /ders
+# altında StaticFiles ile servis eder; kopyalanmazsa dizin yok hatası → çökme.
+COPY ders-materyali ./ders-materyali
 
 # IN_DOCKER: konteynerde APP_PASSWORD zorunlu kılınır (bkz. main.py). Şifresiz
 # açılış, internete açık bir serviste API kotasını herkese açar.

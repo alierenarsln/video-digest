@@ -44,6 +44,9 @@ from .config import (
 from .pipeline import ask, frames, summarize
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Ders materyali (interaktif testler + study-pack PDF'leri) repo kökünde durur;
+# /ders altında servis edilir. Oturum korumasının ARKASINDA (login gerekir).
+DERS_DIR = Path(__file__).parent.parent / "ders-materyali"
 
 
 def _authed(request: Request) -> bool:
@@ -798,3 +801,7 @@ app.mount("/out", StaticFiles(directory=OUT_DIR), name="out")
 # Tasarım sistemi (ds/tokens/*.css) buradan geliyor. index.html artık CSS'i
 # gömülü taşımıyor; token'lar zip'ten birebir kopyalandığı için ayrı dosyalar.
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Ders materyali: interaktif testler (ör. /ders/ine4106-bpr-drill.html) ve
+# study-pack PDF'leri. Oturum korumasının arkasında — girişliysen açılır.
+app.mount("/ders", StaticFiles(directory=DERS_DIR, html=True), name="ders")
