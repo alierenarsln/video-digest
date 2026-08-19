@@ -1143,6 +1143,26 @@ async function kitaplikGoster() {
     <button id="backfillBtn" class="btn sessiz" type="button">🪄 Başlıkları düzelt</button>
     <a class="btn sessiz" href="/api/export-zip" download="tanik-kutuphane.zip" style="text-decoration:none">⭳ Kütüphaneyi indir (.zip)</a>
     <span id="backfillNot" class="ipucu"></span></div>`;
+
+  // Ders materyali: işlerden bağımsız SABİT bölüm. Kitaplığa her girişte en üstte
+  // durur — mobilden linki elle yazmadan tek dokunuşla açılsın diye.
+  const pdfChip = "display:inline-block;padding:5px 11px;background:var(--surface-sunken);" +
+    "border:1px solid var(--border-hair);border-radius:var(--radius-1);color:var(--text-strong);" +
+    "text-decoration:none;font-size:var(--fs-sm)";
+  html += `<div class="kolBolum"><div class="bas"><h2>📚 Ders materyali</h2>
+    <span class="say">her zaman burada</span></div><div class="kartlar">
+    <a class="kitap" href="/ders/ine4106-bpr-drill.html" style="text-decoration:none;display:block">
+      <div class="ad">📝 BPR Testi — INE4106</div>
+      <div class="kaynakSat">207 soruluk interaktif test · şıklar her açılışta karışır</div>
+      <div class="ust2"><span>çöz ▸</span></div>
+    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">
+      <a href="/ders/ine4106-bpr-studypack.pdf" target="_blank" rel="noopener" style="${pdfChip}">📄 BPR study-pack</a>
+      <a href="/ders/ine3015-ppc-studypack.pdf" target="_blank" rel="noopener" style="${pdfChip}">📄 PPC study-pack</a>
+      <a href="/ders/ine4307-karar-analizi-studypack.pdf" target="_blank" rel="noopener" style="${pdfChip}">📄 Karar Analizi study-pack</a>
+    </div>
+  </div></div>`;
+
   for (const [k, grp] of koll) {
     const adet = grp.tekil.length + grp.video.length;
     let kartlar = grp.tekil.map(kitapKart).join("");
