@@ -14,6 +14,7 @@ import httpx
 from ..config import (
     CHUNK_SECONDS,
     GROQ_API_KEY,
+    GROQ_API_KEYS,
     GROQ_BASE_URL,
     GROQ_TRANSCRIBE_MODEL,
     TRANSCRIBE_CONCURRENCY,
@@ -92,7 +93,14 @@ def _parse_segment_list(listfile: Path, chunk_dir: Path) -> list[tuple[Path, flo
     return out
 
 
-async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segment]:
+def _groq_keys() -> list[str]:
+    """Kullanılabilir Groq anahtarları (çok-anahtar; tek anahtara geriye uyumlu)."""
+    return GROQ_API_KEYS or ([GROQ_API_KEY] if GROQ_API_KEY else [])
+
+
+async def _transcribe_chunk(
+    client: httpx.AsyncClient, path: Path, idx: int
+) -> list[Segment]:
     data = {
         "model": GROQ_TRANSCRIBE_MODEL,
         "response_format": "verbose_json",
@@ -101,33 +109,42 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segme
     if TRANSCRIBE_LANGUAGE:
         data["language"] = TRANSCRIBE_LANGUAGE
 
-    # Groq geçici olarak 502/503 dönebiliyor (gerçek bir işte görüldü). Bu arka
-    # planda koşan, dakikalarca süren bir iş — 30 saniye deneyip pes etmek koca
-    # bir işi geçici bir kesinti yüzünden çöpe atıyor. Sabırlı davran.
+    # ÇOK ANAHTAR: parçalar farklı anahtarlara dağılır (idx offset'i), bir parça
+    # 429/5xx alınca SIRADAKI anahtara döner — böylece tek anahtar rate-limit'e
+    # takılınca koca iş retry'de dakikalarca asılmaz (büyük yüklemede yaşandı).
+    # Bekleme yalnızca TÜM anahtarları bir tur denedikten sonra yapılır; tek
+    # anahtarda davranış eskisiyle aynı (her denemede backoff).
+    keys = _groq_keys()
+    nkey = max(1, len(keys))
     last_error: Exception | None = None
-    for attempt in range(8):
+    for attempt in range(10):
+        key = keys[(idx + attempt) % nkey]
+        cycled = (attempt + 1) % nkey == 0  # tüm anahtarlar bir tur denendi mi
         try:
             with path.open("rb") as fh:
                 resp = await client.post(
                     f"{GROQ_BASE_URL}/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                    headers={"Authorization": f"Bearer {key}"},
                     files={"file": (path.name, fh, "audio/flac")},
                     data=data,
                 )
             if resp.status_code == 429:
-                wait = float(resp.headers.get("retry-after", 2**attempt))
-                await asyncio.sleep(min(wait, 60))
+                last_error = RuntimeError("Groq 429 (rate limit)")
+                if cycled:
+                    wait = float(resp.headers.get("retry-after", 2 ** (attempt // nkey)))
+                    await asyncio.sleep(min(wait, 60))
                 continue
             if resp.status_code >= 500:
                 # Groq'un kendi sorunu; bizim istekte düzeltilecek bir şey yok.
                 last_error = RuntimeError(f"Groq {resp.status_code}")
-                bekle = min(2**attempt, 60)
-                print(
-                    f"[transcribe] {path.name}: Groq {resp.status_code} (gecici), "
-                    f"{bekle} sn sonra yeniden ({attempt + 1}/8)",
-                    flush=True,
-                )
-                await asyncio.sleep(bekle)
+                if cycled:
+                    bekle = min(2 ** (attempt // nkey), 60)
+                    print(
+                        f"[transcribe] {path.name}: Groq {resp.status_code} (gecici), "
+                        f"{bekle} sn sonra yeniden ({attempt + 1}/10)",
+                        flush=True,
+                    )
+                    await asyncio.sleep(bekle)
                 continue
             resp.raise_for_status()
             payload = resp.json()
@@ -138,28 +155,34 @@ async def _transcribe_chunk(client: httpx.AsyncClient, path: Path) -> list[Segme
             ]
         except httpx.HTTPError as exc:
             last_error = exc
-            await asyncio.sleep(min(2**attempt, 60))
+            if cycled:
+                await asyncio.sleep(min(2 ** (attempt // nkey), 60))
     raise RuntimeError(
-        f"Groq transkripsiyonu başarısız ({path.name}), 8 deneme: {last_error}"
+        f"Groq transkripsiyonu başarısız ({path.name}), 10 deneme: {last_error}"
     )
 
 
 async def transcribe(audio: Path, work: Path) -> list[Segment]:
-    if not GROQ_API_KEY:
+    if not _groq_keys():
         raise RuntimeError("GROQ_API_KEY tanımlı değil.")
 
     # Zaman damgaları parça-yerel gelir; offset ile global eksene kaydırılır.
     chunks = await _split(audio, work)
 
-    sem = asyncio.Semaphore(TRANSCRIBE_CONCURRENCY)
-    limits = httpx.Limits(max_connections=TRANSCRIBE_CONCURRENCY)
+    # Anahtar sayısı kadar (en az TRANSCRIBE_CONCURRENCY) eşzamanlılık: iki anahtar
+    # varsa iki parça aynı anda ayrı anahtarlarda işlensin, cascade gibi.
+    esz = max(TRANSCRIBE_CONCURRENCY, len(_groq_keys()))
+    sem = asyncio.Semaphore(esz)
+    limits = httpx.Limits(max_connections=esz)
 
     async with httpx.AsyncClient(timeout=300, limits=limits) as client:
-        async def one(chunk: Path) -> list[Segment]:
+        async def one(idx: int, chunk: Path) -> list[Segment]:
             async with sem:
-                return await _transcribe_chunk(client, chunk)
+                return await _transcribe_chunk(client, chunk, idx)
 
-        results = await asyncio.gather(*(one(c) for c, _ in chunks))
+        results = await asyncio.gather(
+            *(one(i, c) for i, (c, _) in enumerate(chunks))
+        )
 
     segments: list[Segment] = []
     for (_, offset), chunk_segments in zip(chunks, results):

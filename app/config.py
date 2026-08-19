@@ -26,6 +26,17 @@ def _bool(name: str, default: bool) -> bool:
 
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+# Çok anahtar: cascade gibi GROQ_API_KEY / _2 / _3 / _4 arasında dönüşümlü kullan.
+# Tek anahtar rate-limit'e takılınca koca iş retry'de dakikalarca asılı kalıyordu
+# (büyük yüklemelerde yaşandı); ikinci anahtar throughput'u ikiye katlar + hata
+# olunca sıradaki anahtara anında geçilir. Boşlar elenir; hiç yoksa liste boş.
+GROQ_API_KEYS = [
+    k
+    for k in (
+        os.environ.get(f"GROQ_API_KEY{s}", "").strip() for s in ("", "_2", "_3", "_4")
+    )
+    if k
+]
 GROQ_TRANSCRIBE_MODEL = os.environ.get("GROQ_TRANSCRIBE_MODEL", "whisper-large-v3-turbo")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
