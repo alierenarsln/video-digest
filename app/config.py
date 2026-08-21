@@ -203,11 +203,13 @@ PART_SECONDS = _int("PART_SECONDS", 1800)  # 30 dk
 # (GROQ_CONCURRENCY) sıralanır → Groq'la kazanç sınırlı (özetleme örtüşür); yerel
 # transkriptte tam paralellik. 3 makul.
 PART_CONCURRENCY = _int("PART_CONCURRENCY", 3)
-# Taranmış PDF'te her sayfa OCR edilir (300 DPI render + Tesseract, düşük güvende
-# 4-açı yeniden deneme) → yüzlerce sayfalık PDF SAATLERCE sürer ve tek-işçi
-# kuyruğunu bloklar. Üst sınır: bundan çok sayfalıysa ilk MAX_PDF_PAGES işlenir,
-# özet "ilk N (PDF M sayfa)" der. Gerekirse env'den artırılır.
-MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 200)
+# Üst sınır: bundan çok sayfalıysa ilk MAX_PDF_PAGES işlenir, özet "ilk N (PDF M
+# sayfa)" der. Metin katmanlı PDF hızlı (pypdf); asıl maliyet TARANMIŞ PDF'te —
+# her sayfa 300 DPI render + Tesseract OCR (düşük güvende 4-açı) → yüzlerce sayfa
+# uzun sürer ve tek-işçi kuyruğunu bloklar. Varsayılan 600'e çıkarıldı (200+ sayfa
+# belgeler için); daha büyükleri düzenli işleyeceksen env'den (MAX_PDF_PAGES)
+# artır. Uzun PDF zaten PART_PAGES'a göre parçalanıp paralel özetlenir.
+MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 600)
 # Uzun PDF de (uzun video gibi) parçalara bölünür: sayfa sayısı ~PART_PAGES'ı
 # belirgin aşarsa her parça AYRI özetlenir (part sayısı = round(sayfa/PART_PAGES)).
 # Tek dev özet 200 sayfada max_tokens'ı taşırıyor + gezilmesi zor.
