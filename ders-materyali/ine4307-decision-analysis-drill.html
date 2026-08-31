@@ -1,0 +1,508 @@
+<title>Decision Analysis Drill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --ground:#F7F8FA;
+  --card:#FFFFFF;
+  --card-2:#F1F3F7;
+  --ink:#141922;
+  --ink-2:#4A5262;
+  --ink-3:#7B8496;
+  --line:#DFE3EB;
+  --line-2:#C9CFDB;
+  --accent:#3B4A6B;
+  --accent-soft:#E7EAF2;
+  --ok:#2E7D4F;
+  --ok-soft:#E4F1E9;
+  --bad:#B3403A;
+  --bad-soft:#F8E7E6;
+  --stat:#A9762F;
+  --shadow:0 1px 2px rgba(20,25,34,.05), 0 8px 24px -12px rgba(20,25,34,.18);
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#12151C;
+    --card:#191E28;
+    --card-2:#212734;
+    --ink:#E8ECF2;
+    --ink-2:#A6AEBF;
+    --ink-3:#7B8496;
+    --line:#2A313E;
+    --line-2:#3A4354;
+    --accent:#93A5CE;
+    --accent-soft:#232B3C;
+    --ok:#6FBF8E;
+    --ok-soft:#1B2A22;
+    --bad:#E2807A;
+    --bad-soft:#2C1E1E;
+    --stat:#D4A45E;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#12151C;
+  --card:#191E28;
+  --card-2:#212734;
+  --ink:#E8ECF2;
+  --ink-2:#A6AEBF;
+  --ink-3:#7B8496;
+  --line:#2A313E;
+  --line-2:#3A4354;
+  --accent:#93A5CE;
+  --accent-soft:#232B3C;
+  --ok:#6FBF8E;
+  --ok-soft:#1B2A22;
+  --bad:#E2807A;
+  --bad-soft:#2C1E1E;
+  --stat:#D4A45E;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+  font-size:16px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit}
+
+/* ---------- top bar ---------- */
+.bar{
+  position:sticky;top:0;z-index:20;
+  background:color-mix(in srgb, var(--ground) 88%, transparent);
+  backdrop-filter:saturate(1.4) blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.bar-in{
+  max-width:760px;margin:0 auto;padding:10px 20px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.brand{
+  font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-2);margin-right:auto;white-space:nowrap;
+}
+.brand b{color:var(--ink)}
+.stat{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:13px;font-variant-numeric:tabular-nums;
+  color:var(--ink-2);white-space:nowrap;
+}
+.stat b{color:var(--stat);font-weight:600}
+.stat.acc b{color:var(--stat)}
+.progress{
+  height:3px;background:var(--line);position:relative;overflow:hidden;
+}
+.progress i{
+  display:block;height:100%;background:var(--accent);
+  width:0%;transition:width .35s cubic-bezier(.4,0,.2,1);
+}
+
+/* ---------- shell ---------- */
+main{max-width:760px;margin:0 auto;padding:28px 20px 96px}
+
+/* ---------- setup screen ---------- */
+.hero h1{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-weight:600;font-size:clamp(28px,5vw,40px);
+  line-height:1.15;margin:8px 0 10px;text-wrap:balance;letter-spacing:-.01em;
+}
+.hero p.lede{
+  color:var(--ink-2);font-size:17px;max-width:52ch;margin:0 0 26px;
+}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent);font-weight:500;
+}
+.panel{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px;box-shadow:var(--shadow);
+}
+.panel + .panel{margin-top:16px}
+.panel h2{
+  font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 14px;font-weight:600;
+}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  border:1px solid var(--line-2);background:transparent;border-radius:999px;
+  padding:7px 14px;font-size:14px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip[aria-pressed="true"]{
+  background:var(--accent);border-color:var(--accent);color:var(--ground);font-weight:500;
+}
+.chip .ct{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;opacity:.65;
+  font-variant-numeric:tabular-nums;
+}
+.start{
+  margin-top:22px;width:100%;padding:14px;border:0;border-radius:var(--r);
+  background:var(--accent);color:var(--ground);font-weight:600;font-size:16px;
+  cursor:pointer;transition:filter .15s;
+}
+.start:hover{filter:brightness(1.08)}
+.start:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- question ---------- */
+.qhead{
+  display:flex;align-items:baseline;gap:12px;margin-bottom:14px;flex-wrap:wrap;
+}
+.src{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);
+}
+.kind{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);
+  border:1px solid var(--accent-soft);background:var(--accent-soft);
+  padding:2px 8px;border-radius:4px;font-weight:500;
+}
+.q{
+  font-family:"IBM Plex Serif",Georgia,serif;
+  font-size:20px;line-height:1.45;margin:0 0 22px;text-wrap:pretty;
+}
+.choices{display:flex;flex-direction:column;gap:9px}
+.choice{
+  display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;
+  background:var(--card);border:1px solid var(--line-2);border-radius:var(--r);
+  padding:13px 15px;cursor:pointer;font-size:15.5px;line-height:1.45;
+  transition:border-color .13s,background .13s,transform .06s;
+}
+.choice:hover:not(:disabled){border-color:var(--accent);background:var(--card-2)}
+.choice:active:not(:disabled){transform:translateY(1px)}
+.choice:disabled{cursor:default}
+.key{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
+  min-width:20px;height:20px;border-radius:4px;
+  display:grid;place-items:center;flex:none;margin-top:1px;
+  background:var(--card-2);color:var(--ink-3);border:1px solid var(--line);
+}
+.choice.pick-ok{border-color:var(--ok);background:var(--ok-soft)}
+.choice.pick-ok .key{background:var(--ok);color:var(--card);border-color:var(--ok)}
+.choice.pick-bad{border-color:var(--bad);background:var(--bad-soft)}
+.choice.pick-bad .key{background:var(--bad);color:var(--card);border-color:var(--bad)}
+.choice.reveal{border-color:var(--ok);background:var(--ok-soft)}
+.choice.reveal .key{background:var(--ok);color:var(--card);border-color:var(--ok)}
+.choice.dim{opacity:.5}
+
+/* ---------- feedback ---------- */
+.fb{
+  margin-top:18px;border-radius:var(--r);padding:15px 17px;
+  border:1px solid var(--line);background:var(--card-2);
+}
+.fb.ok{border-color:var(--ok);background:var(--ok-soft)}
+.fb.bad{border-color:var(--bad);background:var(--bad-soft)}
+.fb .verdict{
+  font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  margin-bottom:7px;
+}
+.fb.ok .verdict{color:var(--ok)}
+.fb.bad .verdict{color:var(--bad)}
+.fb .body{font-size:15px;line-height:1.6;color:var(--ink)}
+.fb .body em{color:var(--ink-2);font-style:normal}
+.nav{display:flex;gap:10px;margin-top:18px;align-items:center}
+.next{
+  flex:1;padding:13px;border:0;border-radius:var(--r);
+  background:var(--accent);color:var(--ground);font-weight:600;cursor:pointer;
+}
+.ghost{
+  padding:13px 16px;border:1px solid var(--line-2);border-radius:var(--r);
+  background:transparent;cursor:pointer;font-size:14px;color:var(--ink-2);
+}
+.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.hint{
+  margin-top:14px;font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;color:var(--ink-3);text-align:center;
+}
+kbd{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;
+  padding:1px 5px;background:var(--card);
+}
+
+/* ---------- results ---------- */
+.score-big{
+  font-family:"IBM Plex Mono",monospace;font-size:clamp(44px,10vw,68px);
+  font-weight:600;line-height:1;font-variant-numeric:tabular-nums;
+  color:var(--stat);letter-spacing:-.02em;
+}
+.score-sub{color:var(--ink-2);font-size:15px;margin-top:6px}
+.trow{
+  display:grid;grid-template-columns:1fr 52px 88px;gap:12px;align-items:center;
+  padding:10px 0;border-bottom:1px solid var(--line);
+}
+.trow:last-child{border-bottom:0}
+.tname{font-size:14.5px}
+.tpct{
+  font-family:"IBM Plex Mono",monospace;font-size:13.5px;text-align:right;
+  font-variant-numeric:tabular-nums;font-weight:500;
+}
+.tbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.tbar i{display:block;height:100%;border-radius:3px}
+
+.foot{
+  max-width:760px;margin:34px auto 0;padding:0 20px;
+  color:var(--ink-3);font-size:12.5px;line-height:1.6;
+}
+@media (max-width:520px){
+  .q{font-size:18px}
+  .bar-in{padding:9px 16px;gap:10px}
+  .brand{font-size:11.5px}
+  main{padding:20px 16px 80px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+</style>
+
+<div class="bar">
+  <div class="bar-in">
+    <span class="brand">INE4307 · <b>Final Drill</b></span>
+    <span class="stat" id="sPos">—</span>
+    <span class="stat acc" id="sAcc"></span>
+  </div>
+  <div class="progress"><i id="pbar"></i></div>
+</div>
+
+<main id="app"></main>
+<div class="foot" id="foot"></div>
+
+<script>
+/* ==== BANK ==== */
+const BANK = [{"k":"tf","t":"L1&2","n":"L1&2 · Decision Analysis s.19","q":"Decision analysis provides decision makers with insight, not necessarily a solution.","e":"Slayt 19'da birebir bu ifade var: karar analizi nicel araclarla icgoru saglar, hazir bir cozum dayatmaz.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · Three Approaches of Decision Analysis s.24","q":"The slides list descriptive, normative and prescriptive approaches, and describe decision analysis itself as a NORMATIVE approach designed for super-rational people.","e":"Uc yaklasim dogru sayilmis ama Keeney ve Raiffa (1976) alintisina gore karar analizi PRESCRIPTIVE'tir: super-rasyonel degil, normal zekadaki insanlar icin tasarlanmistir.","a":false},{"k":"tf","t":"L1&2","n":"L1&2 · Structuring the values and objectives s.44","q":"Means objectives are organized into hierarchies, whereas fundamental objectives are organized into networks.","e":"Tam tersi: slayt 44'e gore temel (fundamental) amaclar hiyerarsi halinde, arac (means) amaclar ise ag (network) halinde orgutlenir.","a":false},{"k":"tf","t":"L1&2","n":"L1&2 · Uncertain Events s.36","q":"An uncertain event is relevant to the decision problem only if its outcome has some impact on at least one of the decision maker's objectives.","e":"Slayt 36 'Only some uncertain events are relevant' der ve olcutu acikca koyar: olayin sonucu en az bir amaci etkilemelidir.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · The Decision-Analysis Process s.28","q":"The decision-analysis process is strictly linear: once sensitivity analysis is completed, the analyst never returns to the earlier steps.","e":"Slayt 28 sureci 'an iterative process' diye isaretler; duyarlilik analizinden oklar amaclara, alternatiflere ve modelleme adimina geri doner.","a":false},{"k":"tf","t":"L1&2","n":"L1&2 · Consequence {C} s.40","q":"The planning horizon is the end of the time line, looking forward from the current time and the current decision.","e":"Slayt 40'taki tanim aynen boyle; slayt 39'daki zaman cizgisinde de 'Planning Horizon' etiketi cizginin sonuna konmustur.","a":true},{"k":"mc","t":"L1&2","n":"L1&2 · Universal Elements of Decision Making s.12","q":"According to the slide \"Universal Elements of Decision Making\", which set lists the four universal elements?","e":"Slayt 12'deki dort bant tam olarak OBJECTIVES / ALTERNATIVES / CONSEQUENCE / STATE OF NATURE'dir. Olasilik, fayda ve risk tutumu sonraki haftalarin modelleme araclaridir; karar agaci/etki diyagrami ise yapilandirma araci.","o":["Objectives, alternatives, consequences, states of nature","Objectives, probabilities, utilities, risk attitudes","Alternatives, decision trees, influence diagrams, sensitivity analysis","Problem definition, modelling, engineering, business process change"]},{"k":"mc","t":"L1&2","n":"L1&2 · Components of Decision Problem s.20 & 40","q":"In the components of a decision problem, how are Payoffs - Utility {U} defined?","e":"Slayt 20 ve 40'taki tanim budur: payoff hem secilen alternatife hem de sonradan gerceklesen doga durumuna bagli sayisal degerdir. Digerleri sirasiyla olasilik, amac (s.32) ve planlama ufku (s.40) tanimlaridir.","o":["The numerical (monetary) value representing the consequence of a particular alternative we choose together with a state of nature that occurs later on","The subjective probability the decision maker assigns to each state of nature","The set of specific things the decision maker wants to achieve","The end of the time line after all decisions have been made"]},{"k":"mc","t":"L1&2","n":"L1&2 · Elements of Decision Problems - Consequences s.38","q":"The slides stress that \"consequence is a function of ...\":","e":"Slayt 38'in kendi ornegi: 'No umbrella and it rains so you will be wet!' Sonuc ancak karar ile doga durumu birlikte belirlendiginde ortaya cikar; ikisinden yalnizca biri yeterli degildir.","o":["the decision and the state of nature","the decision alone, since the decision maker controls the outcome","the state of nature alone, since nature controls everything","the decision maker's risk attitude"]},{"k":"mc","t":"L1&2","n":"L1&2 · Payoff Table s.22","q":"In the payoff table used in the slides to represent a decision problem, what do the rows, the columns and the entries stand for?","e":"Slayt 22'deki sablonda sol sutun 'Alternative' (A1..An), ust basliklar 'State of Nature' (S1..Sm) ve hucreler cij'dir. Sutunlar olasilik degil doga durumudur.","o":["Rows are the alternatives A1...An, columns are the states of nature S1...Sm, and each entry cij is the payoff of that alternative-state pair","Rows are the states of nature and columns are the alternatives","Rows are the objectives and columns are the consequences","Rows are the alternatives and columns are the probabilities assigned to each outcome"]},{"k":"mc","t":"L1&2","n":"L1&2 · An Example Umbrella Problem s.23","q":"In the Umbrella Problem payoff table, which cell carries the highest payoff of 100?","e":"Slayt 23'teki degerler: Umbrella-Rain 80, Umbrella-No Rain -20, No Umbrella-Rain -40, No Umbrella-No Rain 100. En yuksek hucre 100 ile A2S2'dir.","o":["No Umbrella when there is No Rain, described as \"The best!\"","Umbrella when it rains, described as \"Don't get wet but a little inconvenient\"","Umbrella when there is no rain, described as \"Cumbersome and inconvenient\"","No Umbrella when it rains, described as \"Get wet (and possibly get sick)\""]},{"k":"mc","t":"L1&2","n":"L1&2 · The Party Problem Payoff Table s.42","q":"The Party Problem payoff table is: Outdoors (Rain -40, Sunny 100), Porch (Rain 0, Sunny 80), Indoors (Rain 60, Sunny -20). If P(Rain) = 0.4 and P(Sunny) = 0.6 and each alternative is scored by its expected payoff (the sum of probability x payoff), which alternative scores highest and with what value?","e":"Beklenen degerler: Outdoors 0,4(-40)+0,6(100)=44; Porch 0,4(0)+0,6(80)=48; Indoors 0,4(60)+0,6(-20)=12. En yuksegi 48 ile Porch'tur; 100 ise tek bir hucre degeridir, beklenen deger degil.","o":["Porch, with 48","Outdoors, with 44","Indoors, with 12","Outdoors, with 100"]},{"k":"mc","t":"L1&2","n":"L1&2 · Sequential Decisions s.34","q":"According to the slides, what is a \"dynamic decision situation\"?","e":"Slayt 34'teki tanim aynen budur: bir karar zincirleme olarak digerine yol acar ve gelecekteki kararlar daha once tam olarak ne oldugunа baglidir.","o":["A situation where future decisions may depend on exactly what happened before","A situation in which every decision must be made simultaneously at the current time","A situation in which the decision maker's objectives change while the problem is being solved","A situation in which no uncertain event is resolved before the planning horizon"]},{"k":"mc","t":"L1&2","n":"L1&2 · Requisite Decision Models s.29","q":"When is a decision model called \"requisite\"?","e":"Slayt 29'daki tanim: model ancak problemi cozmek icin gerekli olan her seyi icerdiginde requisite sayilir. Her degiskeni eklemek modeli requisite yapmaz; tarihsel veri dogrulamasi ve nesnel olasilik sarti slaytta gecmez.","o":["When it contains everything that is essential for solving the problem","When it includes every variable that could conceivably affect the outcome","When it has been validated against historical data","When all of its probabilities come from objective frequencies rather than judgement"]},{"k":"mc","t":"L1&2","n":"L1&2 · Three Approaches of Decision Analysis s.24","q":"Which approach is described as \"how decisions ARE made (by ordinary folks)\"?","e":"Slayt 24: descriptive siradan insanlarin kararlari nasil VERDIGINI anlatir; normative super-rasyonel bireyin nasil vermesi GEREKTIGINI, prescriptive ise kararlarin nasil DAHA IYI yapilabilecegini. Requisite bir yaklasim degil, model niteligidir (s.29).","o":["Descriptive","Normative","Prescriptive","Requisite"]},{"k":"mc","t":"L1&2","n":"L1&2 · Objective Hierarchy s.45","q":"In the objective hierarchy example (Maximize Value to Customers and Stakeholders -> Profitability, Quality, Service, Reputation -> Max Revenues, Min Costs), what are \"Max Revenues\" and \"Min Costs\"?","e":"Slayt 45 bu iki kutuyu acikca 'Means Objectives' diye etiketler; slayt 44'e gore arac amaclar baska amaclara ulasmaya yardim eder, karlilik ise temel amaclardan biridir.","o":["Means objectives, because they help achieve a higher objective (profitability)","Fundamental objectives, because they are measured in money","States of nature, because revenues and costs are uncertain","Consequences, because they are the payoffs of the decision"]},{"k":"mc","t":"L1&2","n":"L1&2 · Structuring Decisions s.43","q":"The slides give three fundamental steps of structuring decisions. What is the SECOND step?","e":"Slayt 43'teki sira: (1) deger ve amaclarin yapilandirilmasi, (2) elemanlarin mantiksal cerceveye yerlestirilmesi, (3) elemanlarin rafine ve kesin tanimi. Duyarlilik analizi bu uc adimin disinda, surecin sonraki asamasidir (s.28).","o":["Structuring the elements into a logical framework (decision trees and influence diagrams)","Structuring the values and objectives","Refinement and precise definition of all the elements","Performing sensitivity analysis on the chosen alternative"]},{"k":"mc","t":"L1&2","n":"L1&2 · Elements of Decision Problems - Decisions to Make s.33","q":"Beyond the obvious options, which possibilities do the slides say a decision maker should ALWAYS consider among the alternative courses of action?","e":"Slayt 33 bu ucunu birebir sayar: hicbir sey yapmama, daha fazla bilgi icin bekleme ve olasi kayiplara karsi korunma. En yuksek tek payoff'a bakmak doga durumunu goz ardi eder.","o":["Doing nothing, waiting to obtain more information, or hedging against possible losses","Only the alternatives that are technically feasible today","Choosing the alternative with the highest single payoff","Deferring the whole problem to an expert consultant"]},{"k":"tf","t":"L1&2","n":"L1&2 · Some Comments on Influence Diagrams s.60","q":"In the Clemen & Reilly convention used in this course, all arcs are drawn solid: an arc pointing into a decision node means sequence, while an arc pointing into any other node means relevance.","e":"Slayt 60 tam olarak bunu söyler: anlamı okun çizim tipi değil, okun GİRDİĞİ düğümün tipi belirler; karar düğümüne giren ok sıra (sequence), diğerlerine giren ok ilgililik (relevance) demektir.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · Some Comments s.60 & Common Mistakes s.91","q":"An influence diagram may contain a cycle, as long as that cycle represents feedback that happens over time.","e":"ID belirli bir andaki karar durumunun anlık görüntüsüdür; tek bir zaman noktasında geri besleme olamayacağı için diyagram ASLA döngü içeremez.","a":false},{"k":"tf","t":"L1&2","n":"L1&2 · Sequential Decisions – Hurricane Example s.72–73","q":"In the sequential version of the evacuation decision, there is no arc from \"Forecast\" to \"Wait for Forecast\" but there is one from \"Forecast\" to \"Evacuate?\", which shows that the decision whether to wait is made before the forecast is known.","e":"Slayt 73: olayların sırası oklarla ima edilir; önce bekle/hemen ayrıl kararı verilir, beklenirse tahmin açığa çıkar, en son tahmine göre tahliye kararı verilir.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · The Basic Risky Decision s.66","q":"In the basic risky decision of Figure 3.3 there is no arc from the chance node into the decision node, which means the investor does not know the market outcome at the moment the investment choice is made.","e":"Karar düğümüne giren ok \"olay karardan önce öğrenilir\" anlamına gelir; slayt 66 böyle bir ok olmadığını ve belirsizliğin karar anında çözülmediğini açıkça yazar.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · Influence Diagrams s.54","q":"Compared with decision trees, influence diagrams give a more compact representation and are easier to explain to non-technical managers, but a drawback is that conventions differ from software to software.","e":"Slayt ID'nin avantajını kompaktlık ve anlatılabilirlik, dezavantajını ise her yazılımın farklı konvansiyon kullanması (bu yüzden ustalaşmanın zorluğu) olarak veriyor.","a":true},{"k":"tf","t":"L1&2","n":"L1&2 · Some Comments on Influence Diagrams s.60","q":"According to the lecture, creating an influence diagram is generally easy, whereas interpreting an existing one is the difficult part.","e":"Slayt tam tersini söylüyor: hazır bir ID'yi yorumlamak genelde kolaydır, sıfırdan ID oluşturmak daha zordur.","a":false},{"k":"mc","t":"L1&2","n":"L1&2 · Definition of Symbols s.55–56","q":"In an influence diagram, which shape is used for a chance (uncertain) event node?","e":"Oval = belirsiz olay (chance event); dikdörtgen = karar, elmas = nihai ödeme, yuvarlatılmış dikdörtgen = ara hesaplama (değer) düğümü.","o":["An oval","A rectangle","A diamond","A rectangle with rounded corners"]},{"k":"mc","t":"L1&2","n":"L1&2 · Definition of Symbols s.55–56, Deterministic Nodes s.78–79","q":"What does a rectangle with rounded corners represent in an influence diagram?","e":"Bu düğüm olasılık dağılımı taşımaz; öncüllerinden matematiksel olarak hesaplanan bir değeri (ör. Revenue, Cost) toplar. Nihai ödeme elmastır.","o":["An intermediate calculation node, computed deterministically from its predecessors","The ultimate payoff (final consequence) of the problem","An uncertain event whose probabilities must be assessed","A choice that is under the decision maker's control"]},{"k":"mc","t":"L1&2","n":"L1&2 · Showing Influence with Arrows s.58–59, Some Comments s.60","q":"Under the Clemen & Reilly convention, what does an arc drawn from a chance node into a decision node tell you?","e":"Karar düğümüne giren ok sıra (sequence) kodlar: olayın sonucu karardan ÖNCE öğrenilir (hurricane örneğinde Forecast → Evacuate?). Olasılıkları değiştirme anlamı, şans düğümüne GİREN oka aittir.","o":["The outcome of the chance event will be known before that decision is made (sequence)","The decision alters the probabilities of the chance event","The chance event and the decision happen simultaneously","The chance event is irrelevant to the final payoff"]},{"k":"mc","t":"L1&2","n":"L1&2 · Showing Influence with Arrows s.58","q":"In the arrow notation shown in the lecture (a notation NOT used in Clemen & Reilly), a dashed arrow:","e":"Slayt 58'e göre kesikli ok sırayı gösterir ve yalnızca karar düğümlerini hedefler; bağımlılığı (relevance) gösteren düz ok ise yalnızca şans ve sonuç düğümlerine gider.","o":["indicates sequence and may point only to decision nodes","indicates dependence and may point only to chance and consequence nodes","indicates relevance and may point to any type of node","indicates that the two nodes are probabilistically independent"]},{"k":"mc","t":"L1&2","n":"L1&2 · Showing Influence with Arrows s.58–59","q":"A solid arc is drawn from decision node E to chance node F. What does this arc mean?","e":"Şans düğümüne giren ok relevance'tır: hangi seçeneğin seçildiğine göre F'nin olasılıkları değişir; bu ok sıra bilgisi vermez.","o":["Decision E is relevant to assessing the probabilities of the outcomes of F","The outcome of F becomes known before decision E is made","Decision E must be taken after F has occurred","E and F should be combined into a single node"]},{"k":"mc","t":"L1&2","n":"L1&2 · Some Comments s.60, Common Mistakes s.91, Figure 3.15 s.77","q":"Which of the following is NEVER permitted in an influence diagram?","e":"Diğer üçü normal yapılardır (Figure 3.15'te Fixed Cost öncülsüz bir şans düğümü, Profit'e birden çok ok girer); yalnızca döngü yasaktır çünkü diyagram tek bir anın fotoğrafıdır.","o":["A cycle among the nodes","An arc from a decision node to a chance node","Two different arcs pointing into the same consequence node","A chance node that has no predecessors"]},{"k":"mc","t":"L1&2","n":"L1&2 · Building an Influence Diagram s.85–86","q":"According to the lecture's step-by-step procedure, what is the FIRST step in building an influence diagram?","e":"Prosedür kararlardan başlar (1. kararları listele, 2. kararlar arası sıra ilişkileri, 3. sonuç düğümü); belirsizlik düğümleri ancak 6. adımda listelenir.","o":["List all decisions","List all the uncertainty nodes","Identify the consequence node","Draw the relevance arcs between the uncertainty nodes"]},{"k":"mc","t":"L1&2","n":"L1&2 · Common Mistakes s.90","q":"Which of the following is listed as a common mistake when building influence diagrams?","e":"Diğer üç şık slaytta doğru uygulama olarak veriliyor (elmas = nihai sonuç, 4. adım sonuç düğümünü parçalamak, tüm detayların tablo formatında tanımlanması); hata, ID'yi akış şeması sanmaktır.","o":["Reading an influence diagram as if it were a flow chart","Using a diamond shape for the final consequence node","Breaking the consequence node down into intermediate calculations","Defining each node's outcomes, choices and payoffs in a table"]},{"k":"mc","t":"L1&2","n":"L1&2 · Common Mistakes (Cont'd) s.91","q":"The lecture lists \"many chance nodes going into the first decision node to reflect uncertainty\" as a common mistake. Why is it a mistake?","e":"Slayt 91: oku çizmeden önce \"karar verici olayın gerçekleşmesini bekliyor ve bilgiyi karardan önce öğrenecek mi?\" diye sorulmalı; öğrenmiyorsa ok çizilmez. Sadece belirsizlik var diye ok çizmek hatadır.","o":["An arc into a decision node claims that the decision maker will learn that outcome before deciding, which is usually not true","A decision node is allowed to have at most one predecessor","Chance nodes are never allowed to point to decision nodes in any convention","Every such arc automatically creates a cycle in the diagram"]},{"k":"mc","t":"L1&2","n":"L1&2 · Intermediate Calculations s.78–79","q":"When is it appropriate to add intermediate calculation nodes to an influence diagram?","e":"Slayt 78: bir düğümün çok sayıda öncülü olduğunda ilişkileri netleştirmek için ara hesaplama düğümü eklenir; örnekte Profit, Revenue ve Cost düğümlerine ayrılır.","o":["When a node has a lot of predecessors, so the relationships among them can be defined more precisely","When the diagram contains a cycle that has to be broken","When a chance node has more than two possible outcomes","When the decision maker is risk averse rather than risk neutral"]},{"k":"mc","t":"L1&2","n":"L1&2 · The Basic Risky Decision, Figure 3.3 s.66","q":"In Figure 3.3 the payoffs are: Savings gives 200 whether the market goes up or down; Stocks gives 500 if the market goes up and -400 if it goes down. If P(market up) = 0.6, what is the EMV of Stocks and which alternative is preferred on EMV?","e":"EMV = 0,6(500) + 0,4(-400) = 300 - 160 = 140 < 200, yani Savings tercih edilir. 50 eşit-olasılık varsayımının, 300 ise yalnız yukarı dalını saymanın sonucudur.","o":["140, so Savings is preferred","50, so Savings is preferred","300, so Stocks is preferred","200, so the two alternatives are tied"]},{"k":"mc","t":"L1&2","n":"L1&2 · The Basic Risky Decision, Figure 3.9 s.62–65","q":"In the basic risky decision of Figure 3.9 the payoffs are: Savings 2200 regardless of the outcome; Business 5000 if the venture succeeds and 0 if it flops. If success and flop are equally likely, what is the EMV of investing in the business?","e":"EMV = 0,5(5000) + 0,5(0) = 2500 > 2200. 3000 yatırımın ÜSTÜNE kazanılan tutar, 5000 toplam getiri, 2000 ise başlangıç anaparasıdır; hesapta ödeme tablosundaki toplam değerler kullanılır.","o":["2500, which beats the 2200 of the savings account","2200, so the two alternatives are equivalent","3000, the extra return promised by the friend","2000, the amount originally invested"]},{"k":"tf","t":"L3&4","n":"L3&4 · Decision Trees s.12","q":"In a decision tree, a square represents a decision node and a circle represents a chance node, and the tree flows from left to right.","e":"Slayt tam olarak bunu soyluyor: kare=karar dugumu, daire=sans dugumu ve DT soldan saga akar. Kareden cikan arklar mevcut secenekler, daireden cikanlar olasi sonuclardir.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · DT continued s.14","q":"The branches leaving a chance node only need to be mutually exclusive; they do not have to be collectively exhaustive.","e":"Yanlis: slayt her sans dugumunun HEM ayrik HEM de tumleyici (mutually exclusive and collectively exhaustive) sonuclara karsilik gelen dallara sahip olmasi gerektigini soyler; aksi halde olasiliklar 1'e toplanmaz.","a":false},{"k":"tf","t":"L3&4","n":"L3&4 · Solving Decision Trees s.24","q":"When folding back, at each decision node you write the maximum ER/EU at the node and cut off (prune) every decision branch except the optimal one.","e":"Geriye dogru cozumun karar dugumu kurali budur: en yuksek ER/EU dugumun ustune yazilir, digerleri kesilir (agactaki cift cizgi isaretleri) ve en soldaki dugume kadar tekrarlanir.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · DT: Numerical Figures s.23","q":"The probabilities written on the branches of a decision tree are unconditional, because a tree already shows every possible path.","e":"Yanlis: slayt bu olasiliklarin SOLDA halihazirda gozlenmis olaylara KOSULLU oldugunu vurgular; ayrica tek bir sans dugumunden cikan dallarin olasiliklari 1'e toplanmalidir.","a":false},{"k":"tf","t":"L3&4","n":"L3&4 · DT continued s.14","q":"At each decision node the decision maker can choose only one of the available options.","e":"Slaydin ilk maddesi birebir bunu soyler: karar dugumunde yalnizca tek bir secenek secilebilir. Sans dugumunde ise secim yoktur, sonuclar olasiliklarla gerceklesir.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · Influence Diagram vs. Decision Tree s.22","q":"Because a decision tree carries more detail than an influence diagram, the two representations can lead to different optimal alternatives for the same problem.","e":"Yanlis: slaydin sonucu 'bottom line is they are isomorphic' — ayni problemin iki gosterimidir, ayni cozumu verirler. Fark yalnizca detay seviyesi ve okunabilirliktedir.","a":false},{"k":"mc","t":"L3&4","n":"L3&4 · Solving Decision Trees: An Example s.25-27","q":"Alternative A1 is a fair coin flip: Heads wins $10, Tails loses $2. What is the EMV of A1?","e":"EMV = 0,5(10) + 0,5(-2) = 5 - 1 = 4 $; slayt 27 de (0.5)($10)+(0.5)(-$2)=$4 yazar. Olasiliklarla agirliklandirmayi unutup 10-2=8 demek en yaygin hata.","o":["$4.00","$6.00","$8.00","$5.00"]},{"k":"mc","t":"L3&4","n":"L3&4 · Complication / Solution of the Complicated Example s.28-29","q":"In alternative A3, if the first flip is Tails you flip a weighted coin with P(Heads)=0.4 (win $5) and P(Tails)=0.6 (lose $10). What is the expected value at that second chance node?","e":"0,4(5) + 0,6(-10) = 2 - 6 = -4 $; slayt 29 bu dugume EV = $-4 yazar. -2,50 madeni parayi hala adil sanmaktan, -1,00 ise 0,4 ile 0,6'yi ters yerlestirmekten cikar.","o":["-$4.00","-$2.50","-$1.00","-$5.00"]},{"k":"mc","t":"L3&4","n":"L3&4 · Solution of the Complicated Example s.29","q":"For A3 the upper sub-node (after Heads) has EV $7.50 and the lower sub-node (after Tails) has EV -$4.00, each reached with probability 0.5. Given EMV(A1)=$4.00 and EMV(A2)=$0.50, which alternative is optimal?","e":"Once sans dugumleri katlanir (0,5·7,5 + 0,5·(-4) = 1,75), sonra karar dugumunde en buyuk EMV secilir: 4,00 > 1,75 > 0,50, yani A1 (slaydin cozumu de CHOOSE A1). En buyuk olasi odul ya da en kucuk kayip olcut degildir.","o":["A1, because EMV(A3) = 0.5(7.50) + 0.5(-4.00) = $1.75, which is below A1's $4.00","A3, because it is the only alternative that can pay as much as $20","A3, because folding back gives it EMV = $3.75, the highest of the three","A2, because it has the smallest possible loss (-$1)"]},{"k":"mc","t":"L3&4","n":"L3&4 · Pennzoil Decision Tree s.32-33","q":"In the Pennzoil tree, the 'Final Court Decision' chance node has outcomes $10.3B (0.2), $5B (0.5) and $0 (0.3). What is its expected value?","e":"(10,3)(0,2) + (5)(0,5) + (0)(0,3) = 2,06 + 2,50 + 0 = 4,56 milyar $ — slayt 33'teki hesabin aynisi. 5,10 uc sonucun duz ortalamasi, 5,59 ise 0,2 ile 0,3'un yer degistirmesidir.","o":["$4.56 billion","$5.10 billion","$5.59 billion","$5.00 billion"]},{"k":"mc","t":"L3&4","n":"L3&4 · Pennzoil Decision Tree s.32-34","q":"If Texaco counteroffers $3 billion, what does folding back say Pennzoil should do at that decision node?","e":"Karar dugumunde iki dalin katlanmis degerleri karsilastirilir: 4,56 > 3, o yuzden 'refuse' kalir ve 'Accept $3B' dali budanir (slayt 34'teki cift cizgi). Ortalama alma sans dugumune aittir, karar dugumune degil.","o":["Refuse, because the court gamble is worth $4.56B in expectation, more than the certain $3B","Accept the $3B, because a certain amount always beats an uncertain gamble","Accept the $3B, because the court node's EV of $4.56B is only a possibility, not a payoff","Neither — at that node you average the $3B and the $4.56B branches instead of choosing between them"]},{"k":"mc","t":"L3&4","n":"L3&4 · Pennzoil Decision Tree s.34-35","q":"After folding back the whole Pennzoil tree, what is the expected payoff and the optimal first move?","e":"Karsi-teklif sans dugumu: (5)(0,17) + (4,56)(0,50) + (4,56)(0,33) = 0,85 + 2,28 + ~1,50 = 4,63 (slayt 35). Kok karar dugumunde 4,63 > 2 oldugundan 'Accept $2B' dali kesilir.","o":["$4.63 billion; counteroffer $5 billion (the 'Accept $2B' branch is pruned)","$4.56 billion; counteroffer $5 billion","$2.00 billion; accept Texaco's $2 billion offer","$5.00 billion; counteroffer $5 billion, since Texaco is expected to accept it"]},{"k":"mc","t":"L3&4","n":"L3&4 · Pennzoil Decision (In Reality) s.37-38","q":"What actually happened in the Pennzoil case, compared with the tree's recommendation?","e":"Gercekte taraflar 3 milyar dolara anlasti (iflas tehdidi ve surecin yillarca uzamasi baskisiyla). Yani model EMV'ye gore 'refuse' derken karar verici budanmis dali sectii; slayt 38 bunu kirmizi okla gosterir — EMV her zaman fiili tercihi aciklamaz.","o":["Pennzoil accepted the $3 billion settlement, taking the branch the model had pruned","Pennzoil refused and the final court decision awarded it $10.3 billion","Pennzoil accepted Texaco's original $2 billion offer","Texaco accepted the $5 billion counteroffer, exactly as the 0.17 branch predicted"]},{"k":"mc","t":"L3&4","n":"L3&4 · Solving Decision Trees s.24","q":"During folding back, what do you do at a chance node?","e":"Sans dugumunde secim yapamazsiniz, yalnizca degerleri olasiliklarla agirliklandirip toplarsiniz. Maksimum alma ve dal kesme yalnizca karar dugumune (kareye) aittir.","o":["Compute the sum of the branch values times their probabilities (ER/EU) and write it at the node","Take the largest value among the branches and write it at the node","Take the value of the most likely branch and write it at the node","Cut off all branches except the one with the best value"]},{"k":"mc","t":"L3&4","n":"L3&4 · Solution of the Decision Tree / Pennzoil s.27, s.34","q":"In the solved trees, a branch struck through with a double hash/slash mark indicates that:","e":"Budama isareti karar dallarina konur: slayt 27'de A2, slayt 34'te 'Accept $2B' ve 'Accept $3B' boyle kesilmistir. Olasilikla ilgisi yoktur — sans dallari asla budanmaz.","o":["The branch was pruned during folding back because it is not optimal at that decision node","The branch has probability zero and therefore cannot occur","The branch's payoff is still unknown and must be estimated later","The branch has been merged with a parallel branch to simplify the tree"]},{"k":"mc","t":"L3&4","n":"L3&4 · DT continued s.15","q":"If a chance node appears before (to the left of) a decision node in the tree, what does that imply?","e":"Dugumler zaman sirasini gosterir: solda cozulen belirsizlik karar aninda bilinir, yani karar o sonuca kosulludur (kasirga orneginde tahmini bekleyip ona gore tahliye etmek gibi). 'Beklenti icinde karar' ise sans dugumu SAGDA oldugunda gecerlidir.","o":["The decision is made conditional on that specific chance outcome having already occurred","The decision must be made in anticipation of that chance event","The probabilities on that chance node become unconditional","Nothing, since the tree is solved backwards the order of the nodes does not matter"]},{"k":"mc","t":"L3&4","n":"L3&4 · Influence Diagram vs. Decision Tree s.22","q":"Which statement correctly compares influence diagrams (IDs) and decision trees (DTs)?","e":"Slaydin uc maddesi: DT daha detayli ve kurmasi bir miktar kolay ama gercek problemlerde karmasiklasir; ID ust duzey yoneticiler icin daha anlasilirdir; ikisi izomorfiktir.","o":["DTs give more detail and are somewhat easier to construct, but get messy for real problems; IDs are easier for upper-level managers — and the two are isomorphic","IDs contain more detail than DTs, which is why they are harder for managers to read","DTs and IDs can produce different optimal alternatives, so both should always be built","DTs are preferred for presentations to upper management because they display every possible path"]},{"k":"mc","t":"L3&4","n":"L3&4 · Expected Monetary Value s.41","q":"According to the EMV slide, how do you choose among risky alternatives?","e":"Slayt 'best' der: maksimizasyonda en yuksek, minimizasyonda (orn. maliyet) en dusuk beklenen deger. Sonuclar yalnizca paradan olusuyorsa bu degere EMV denir.","o":["Pick the alternative with the best expected value — highest when maximizing, lowest when minimizing; when consequences are purely monetary this is the EMV","Always pick the alternative with the highest expected value, since decision analysis is always a maximization problem","Pick the alternative whose single best possible outcome is largest","Pick the alternative with the smallest spread between its best and worst outcomes"]},{"k":"mc","t":"L3&4","n":"L3&4 · DT: Numerical Figures s.23","q":"Where are monetary values placed in a decision tree?","e":"Slayt: bireysel parasal degerler olustuklari dallara, birikimli degerler ise uc dugumlerin sagina yazilir — geriye katlarken bu uc degerler kullanilir.","o":["Individual monetary values go on the branches where they occur; cumulative values are shown to the right of the end nodes","Cumulative values go on the branches; individual values are shown to the right of the end nodes","Both individual and cumulative values are written next to the root decision node","Only cumulative values are shown, since individual branch values are implied by the probabilities"]},{"k":"tf","t":"L3&4","n":"L3&4 · Risk Profiles s.48/52","q":"A risk profile is simply a bar chart that displays the chances associated with the possible (discrete) outcomes, and each risk profile is associated with one decision strategy.","e":"Slaydın tanımı birebir bu: risk profili = olası ayrık sonuçların olasılıklarını gösteren çubuk grafik ve her profil bir karar stratejisine aittir. Sürekli dağılımlar da biliniyorsa çizilebilir.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · Risk Profiles s.49","q":"In the Texaco-Pennzoil decision tree, the optimal decision strategy is \"Counteroffer $5 Billion; refuse Texaco counteroffer\".","e":"Doğru: slayt 49 bu stratejiyi açıkça 'optimal decision strategy' olarak yazar; kabul edilen $2 milyarlık teklif değil, karşı teklif dalı seçilir.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · Deterministic Dominance s.61","q":"Deterministic dominance holds when the worst outcome of Alternative A is at least as good as the best outcome of Alternative B.","e":"Doğru: A'nın en kötüsü B'nin en iyisinden aşağı değilse, şans nasıl gerçekleşirse gerçekleşsin A daha iyidir; bu yüzden 'deterministik'.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · Dominance vs Expected Value s.77","q":"If Strategy A stochastically dominates Strategy B, then A must also deterministically dominate B.","e":"Yanlış: slayt 77'deki Fig.2 karşı örneğinde A, B'yi stokastik olarak yener ama profillerin aralıkları çakıştığı için deterministik üstünlük yoktur. Deterministik üstünlük stokastiği gerektirir, tersi değil.","a":false},{"k":"tf","t":"L3&4","n":"L3&4 · Stochastic Dominance vs Expected Value s.74","q":"If one alternative dominates another, then the dominating alternative must have the higher expected value.","e":"Doğru: slayt bunu aynen söyler. Üstünlük tek yönlü çalışır; dominance daha yüksek EV'yi gerektirir ama yüksek EV dominance'ı gerektirmez.","a":true},{"k":"tf","t":"L3&4","n":"L3&4 · Deterministic Dominance s.61","q":"In the definition of the range [L, U] of a cumulative risk profile, L is the smallest 100% point and U is the largest 0% point.","e":"Yanlış, ters çevrilmiş: L = kümülatif profildeki EN BÜYÜK %0 noktası (alt sınır), U = EN KÜÇÜK %100 noktası (üst sınır).","a":false},{"k":"tf","t":"L3&4","n":"L3&4 · Stochastic Dominance s.64/66-67/71-72","q":"Stochastic dominance can arise either from different payoffs with the same probabilities, or from the same payoffs with different probabilities.","e":"Doğru, slayt 64 iki durumu da sayar: Firm A-B örneği aynı olasılık-farklı ödeme (10.5/5.2 karşısında 10.3/5), Firm C-D örneği aynı ödeme-farklı olasılık (0.30/0.60/0.10 karşısında 0.20/0.50/0.30).","a":true},{"k":"mc","t":"L3&4","n":"L3&4 · Dominance: An Alternative to EMV s.60","q":"According to the lecture, which statement correctly describes deterministic dominance?","e":"Deterministik üstünlükte şansın nasıl gerçekleştiği fark etmez; 'ortalamada üstünlük' tanımı ise stokastik (olasılıksal) üstünlüğe aittir. Diğer iki şık slaytta dominance tanımı olarak geçmez.","o":["One strategy is always better than another, regardless of any chance outcomes","One strategy is better than another on the average, considering the chance distributions","One strategy has a higher EMV once all chance nodes have been folded back","One strategy has a smaller variance in its risk profile than another"]},{"k":"mc","t":"L3&4","n":"L3&4 · Risk Profiles s.49-51","q":"How many decision strategies exist in the Texaco-Pennzoil decision tree?","e":"Slayt 49 sayıyı açıkça ÜÇ verir: Accept $2B tek stratejidir; Counteroffer $5B dalı ise ikinci karar düğümünde (Refuse / Accept $3B) ikiye ayrılır.","o":["Three","Two","Four","Six"]},{"k":"mc","t":"L3&4","n":"L3&4 · Collapsing Decision Trees s.55-56","q":"After collapsing the Pennzoil tree for the counteroffer strategy, what is the probability of the $5 billion settlement?","e":"Aynı sonuca giden yolların olasılıkları toplanır: 0.17 + (0.5x0.5=0.25) + (0.33x0.5=0.165) = 0.585. 0.17 sadece Texaco'nun kabul dalıdır.","o":["0.585","0.170","0.415","0.250"]},{"k":"mc","t":"L3&4","n":"L3&4 · Collapsing Decision Trees s.55-56","q":"In the same collapsed tree, what is the probability of the $10.3 billion outcome?","e":"İki yol 10.3'e gider: (0.5x0.2=0.10) + (0.33x0.2=0.066) = 0.166. 0.20 sadece koşullu mahkeme olasılığı, 0.099 tek bir $0 yolu, 0.249 ise toplam $0 olasılığıdır.","o":["0.166","0.200","0.099","0.249"]},{"k":"mc","t":"L3&4","n":"L3&4 · Stochastic Dominance s.64/68/73","q":"For a maximization objective, when does Strategy A stochastically dominate Strategy B?","e":"Slayt 64'ün tanımı budur; maksimizasyonda sağa kayan profil daha yüksek ödeme demektir. Profiller kesişirse üstünlük yoktur, son şık ise deterministik üstünlüğün tanımıdır.","o":["When no part of A's cumulative risk profile lies to the left of B's, and at least some part of it lies to the right of B's","When no part of A's cumulative risk profile lies to the right of B's, and at least some part of it lies to the left of B's","When A's cumulative profile crosses B's exactly once from below","When A's worst outcome is at least as good as B's best outcome"]},{"k":"mc","t":"L3&4","n":"L3&4 · Dominance vs Expected Value s.76","q":"In the counterexample of Fig.1, Choice A pays $5 with certainty while Choice B pays $0 with probability 0.9 and $10 with probability 0.1. What is the correct conclusion?","e":"EMV(A)=5x1=5, EMV(B)=0x0.9+10x0.1=1. Ama B'nin kümülatif profili $0-$5 aralığında A'nın solunda, $5-$10 aralığında sağında kalır; profiller kesiştiği için üstünlük iddia edilemez.","o":["EMV(A) = 5 and EMV(B) = 1, yet A does not stochastically dominate B","EMV(A) = 5 and EMV(B) = 1, therefore A stochastically dominates B","EMV(A) = 5 and EMV(B) = 1, therefore A deterministically dominates B","EMV(A) = 1 and EMV(B) = 5, therefore B stochastically dominates A"]},{"k":"mc","t":"L3&4","n":"L3&4 · Deterministic Dominance s.57/61/63","q":"Suppose the smallest possible court award in the Pennzoil case were $2.5 billion instead of $0. Comparing cumulative risk profiles, what follows?","e":"Slayt 63'teki grafikte aralıklar ayrık: karşı teklifin en kötüsü (2.5) kabul etmenin en iyisinden (2) büyük, yani her şans senaryosunda daha iyi.","o":["The counteroffer strategy deterministically dominates accepting $2 billion, since its range [2.5, 10.3] lies entirely above the range [2, 2]","Accepting $2 billion deterministically dominates the counteroffer, since $2 billion is certain","The counteroffer only stochastically dominates accepting $2 billion, since the two ranges still overlap","Neither strategy dominates, because the two cumulative risk profiles cross at $2.5 billion"]},{"k":"mc","t":"L3&4","n":"L3&4 · Stochastic Dominance s.70-73","q":"In the Firm C vs Firm D example both firms have the same court payoffs ($10.3, $5, $0), but Firm C's court probabilities are (0.30, 0.60, 0.10) versus Firm D's (0.20, 0.50, 0.30). What does this illustrate?","e":"Ödemeler aynı, olasılık ağırlığı iyi sonuçlara kaymış; kümülatif profiller kesişmediği için C, D'yi stokastik olarak yener. Farklı ödeme-aynı olasılık durumu Firm A-B örneğidir.","o":["Stochastic dominance arising from the same payoffs with different probabilities; Firm C dominates Firm D","Stochastic dominance arising from different payoffs with the same probabilities; Firm C dominates Firm D","Deterministic dominance, because Firm C's worst outcome equals Firm D's best outcome","No dominance, because the two firms share exactly the same set of payoffs"]},{"k":"mc","t":"L3&4","n":"L3&4 · GPC Case Study s.78/81","q":"In the GPC case, product B yields $8M with p = 0.38, $4M with p = 0.12 and $0 with p = 0.50. What is EMV(B)?","e":"0.38x8 = 3.04, 0.12x4 = 0.48, 0.50x0 = 0; toplam 3.52. 3.04 sadece ilk terim, 3.15 ise A'nın EMV'sidir.","o":["$3.52 million","$4.00 million","$3.15 million","$3.04 million"]},{"k":"mc","t":"L3&4","n":"L3&4 · GPC Decision Tree s.79/81","q":"In the GPC decision tree, if there is a time delay and a high price is set, high sales occur with p = 0.3 giving $5M and low sales with p = 0.7 giving -$0.5M. What is the EMV of that chance node?","e":"0.3x5 = 1.5 ve 0.7x(-0.5) = -0.35; toplam 1.15. Bu yüzden gecikme dalında düşük fiyat (2.25) tercih edilir; 3.20 ise gecikme olmayan dalın değeridir.","o":["$1.15 million","$1.50 million","$2.25 million","$3.20 million"]},{"k":"mc","t":"L3&4","n":"L3&4 · GPC Decision Tree s.81","q":"Given EMV(A) = $3.15M, EMV(B) = $3.52M and the risk-free C = $1M, which product should GPC introduce under the EMV criterion?","e":"Kâr maksimize edildiğinden en yüksek EMV'li strateji seçilir: B. Risksizlik EMV kriterinde bir avantaj sayılmaz.","o":["Product B, with the highest EMV of $3.52 million","Product A, because its worst outcome (-$0.5M) is limited","Product C, because it removes all risk for a certain $1 million","Products A and B are equivalent, so C breaks the tie"]},{"k":"mc","t":"L3&4","n":"L3&4 · Cumulative Risk Profiles s.82","q":"In the GPC cumulative risk profiles, the profile of B lies entirely to the right of the profile of A. What can be concluded?","e":"Slayt 82 aynen bunu söyler: profiller kesişmiyor ve B tamamen sağda; maksimizasyonda bu stokastik üstünlüktür. Deterministik olması için aralıkların ayrık olması gerekirdi, A ve B aralıkları çakışıyor.","o":["B stochastically dominates A, so A can be eliminated from consideration","B deterministically dominates A, so A can be eliminated from consideration","A stochastically dominates B, because A's profile rises earlier","No dominance can be claimed; only the EMVs may be compared"]},{"k":"mc","t":"L3&4","n":"L3&4 · Decision Strategies s.46","q":"Which statement correctly defines an optimal decision strategy?","e":"Slayt 46'da yön amaca bağlıdır: kâr maksimizasyonunda en yüksek, maliyet minimizasyonunda en düşük EMV. Ayrıca strateji tek bir karar YOLU değil, her karar düğümünde ne yapılacağını belirten yollar kümesidir.","o":["A decision strategy that results in the highest EMV if we maximize profit, and the lowest EMV if we minimize cost","A decision strategy that results in the highest EMV, whether we maximize profit or minimize cost","A single decision path whose end-branch value is the best in the whole tree","The decision strategy whose risk profile has the smallest spread of outcomes"]},{"k":"tf","t":"L5&6","n":"L5&6 · Sensitivity Graphs and Tornado Diagrams s.14","q":"A tornado diagram shows the relative impact of many variables on ONE alternative, whereas a sensitivity graph shows the impact of ONE variable across several alternatives.","e":"Slayttaki ayrım tam olarak budur: tornado = tek alternatif üzerinde değişkenlerin göreli etkisi, duyarlılık grafiği = tek değişkenin alternatifler arasındaki etkisi. İkisi tamamlayıcıdır.","a":true},{"k":"tf","t":"L5&6","n":"L5&6 · Why Multi-Variable Sensitivity Analysis? s.20","q":"One-way sensitivity analysis already accounts for the additive and multiplicative effects of changing several variables simultaneously.","e":"Yanlış: tek-yönlü analiz aynı anda tek değişken oynattığı için toplamsal ve çarpımsal etkileri kaçırır, bu yüzden duyarlılığı OLDUĞUNDAN AZ gösterir.","a":false},{"k":"tf","t":"L5&6","n":"L5&6 · One-Way Sensitivity Analysis: Tornado Diagrams s.18","q":"In the tornado diagram of Barnard St.'s Net Annual Cost, Months Occupied is the most influential variable, followed by Interest Rate and Monthly Rent.","e":"Tornado çubukları uzunluğa göre sıralanır ve slayttaki içgörü aynen bu sırayı verir: Months Occupied > Interest Rate > Monthly Rent.","a":true},{"k":"tf","t":"L5&6","n":"L5&6 · A Modeling Approach s.4","q":"A requisite decision model is one that includes every variable that could conceivably influence the decision.","e":"Yanlış: requisite model, formu ve içeriği o problemi çözmeye SADECE YETECEK kadar olan modeldir; önemsiz konular bilerek dışarıda bırakılır.","a":false},{"k":"tf","t":"L5&6","n":"L5&6 · Example: SinCrude s.42","q":"In the SinCrude example the likelihood P(B | A1) = 0.2 means that a flaw appearing on the x-ray is not always an actual fracture.","e":"Doğru: A1 = çatlak yok durumudur, dolayısıyla P(B|A1)=0,2 çatlak olmadığı hâlde testin flaw göstermesidir; slayt bunu \"röntgende görünen kusurlar her zaman çatlak değildir\" diye yazar.","a":true},{"k":"tf","t":"L5&6","n":"L5&6 · A Decision Problem: Drug Testing s.51, 53-54","q":"With the costs assigned in the State University drug-testing problem (B=25, C1=1, C2=50, C3=20, C4=2), performing the test turns out to be the optimal decision.","e":"Yanlış: test etmemenin EMV'si -1, test etmenin -3,233; en iyi karar TEST ETMEMEK. Ancak B ve C3 birlikte 50'ye çıkarsa test az farkla öne geçer.","a":false},{"k":"tf","t":"L5&6","n":"L5&6 · Bayes' Theorem s.43","q":"Bayes' theorem is applicable when the events for which posterior probabilities are computed are mutually exclusive and their union is the entire sample space.","e":"Doğru: paydadaki P(A1)P(B|A1)+...+P(An)P(B|An) toplamının P(B)'ye eşit olabilmesi için durumların ayrık ve tümü kapsayan olması gerekir.","a":true},{"k":"mc","t":"L5&6","n":"L5&6 · Sensitivity Graphs and Tornado Diagrams s.14","q":"In a tornado diagram, what does the LENGTH of each horizontal bar represent?","e":"Tornado çubuğu, o değişken alt sınırdan üst sınıra süpürülürken sonuç değerinde oluşan değişimdir; uzun çubuk = etkili değişken.","o":["The change in the consequence value as that one variable swings from its lower bound to its upper bound","The probability that the variable takes on its base-case value","The spread of the consequence value across all the competing alternatives","The correlation between that input variable and the final consequence"]},{"k":"mc","t":"L5&6","n":"L5&6 · Sensitivity Graphs and Tornado Diagrams s.14, 16-17","q":"In a sensitivity graph as used in this course, what is plotted on the axes?","e":"Duyarlılık grafiği girdiyi yatay, hesaplanan sonucu (ör. Net Annual Cost) düşey eksene koyar; her alternatif ayrı bir eğridir.","o":["Input values on the x-axis and the calculated consequence values on the y-axis","Probabilities on the x-axis and utilities on the y-axis","Alternatives on the x-axis and their bar lengths on the y-axis","Lower bounds on the x-axis and upper bounds on the y-axis"]},{"k":"mc","t":"L5&6","n":"L5&6 · Two-Way Sensitivity Analysis s.21-22","q":"What is a \"strategy region\" in a two-way sensitivity analysis?","e":"Slayt strategy region'ı \"alternatiflerin en iyisini içeren grafik alanı\" diye tanımlar; sınırlar < > ≤ ≥ eşitsizliklerinin çözümünden gelir.","o":["The area of the graph over which one particular alternative is the best choice","The region where the two varied inputs are statistically independent","The set of input values for which the model gives the same consequence value","The region excluded because the probabilities would sum to more than one"]},{"k":"mc","t":"L5&6","n":"L5&6 · Stock Market Example s.24-25","q":"In the stock market example the high-risk stock earns $1700 if the market goes up, and any stock purchase costs a $200 brokerage fee. What value appears at the end of the \"Up\" branch of the high-risk stock?","e":"Ağaçtaki uç değer net kazançtır: 1700 - 200 komisyon = 1500. Aynı mantıkla \"Down\" ucu -800 - 200 = -1000'dir.","o":["1500","1700","1900","500"]},{"k":"mc","t":"L5&6","n":"L5&6 · A Decision Problem: Drug Testing s.51, 53","q":"In the drug-testing decision, not testing costs C3 = 20 if the athlete is a drug user and 0 otherwise, and P(drug user) = 0.05. What is the EMV of the \"don't test\" branch?","e":"EMV = 0,05(-20) + 0,95(0) = -1. Test etmenin EMV'si -3,233 olduğundan test etmemek daha iyidir.","o":["-1","-20","-1.05","-3.23"]},{"k":"mc","t":"L5&6","n":"L5&6 · Drug Testing (cont.) s.48-49","q":"Priors are P(D) = 0.05 and P(F) = 0.95; the test gives 7% false negatives and 3% false positives. What is the (information) probability of a positive test result, P(T+)?","e":"P(T+) = 0,05×0,93 + 0,95×0,03 = 0,0465 + 0,029 ≈ 0,075; yani ortak olasılıkların sütun toplamıdır. 0,047 yalnız P(D ve T+) ortak olasılığıdır.","o":["0.075","0.930","0.050","0.047"]},{"k":"mc","t":"L5&6","n":"L5&6 · Drug Testing (cont.) s.49-50","q":"With the same numbers, what is the posterior probability P(D | T+) that an athlete who tests positive is actually a drug user?","e":"0,0465 / 0,075 = 0,62. 0,93 tersine çevirme hatasıdır (o P(T+|D)); düşük önsel yüzünden pozitif testlerin üçte birinden fazlası yanlış alarmdır (0,38).","o":["0.62","0.93","0.38","0.05"]},{"k":"mc","t":"L5&6","n":"L5&6 · Example: SinCrude s.41-44","q":"SinCrude has P(A1 = no fracture) = 0.7, P(A2 = fracture) = 0.3, with P(B | A1) = 0.2 and P(B^c | A2) = 0.1. Given the x-ray shows a flaw (B), what is P(A1 | B)?","e":"P(B|A2) = 1 - 0,1 = 0,9, dolayısıyla 0,14 / (0,14 + 0,27) = 0,14/0,41 ≈ 0,34. 0,14 yalnız paydır, normalize edilmemiştir.","o":["0.34","0.14","0.20","0.70"]},{"k":"mc","t":"L5&6","n":"L5&6 · Machine Inspection / Bayesian Update s.55-56","q":"For the machine inspection problem, P(F) = 0.3, P(T+|F) = 0.9 and P(T+|F') = 0.1. What is P(F | T+)?","e":"(0,9)(0,3) = 0,27 ve (0,1)(0,7) = 0,07; 0,27/0,34 ≈ 0,794. 0,206 tamamlayıcı olan P(F'|T+)'dir.","o":["0.794","0.900","0.270","0.206"]},{"k":"mc","t":"L5&6","n":"L5&6 · Bayesian Update s.56","q":"After a NEGATIVE inspection result, the expected losses are -104.5 for repairing and -45 for not repairing. What is the correct decision and why?","e":"Negatif testten sonra P(F|T-) ≈ 0,045'e düşer (sıfır değil); beklenen kaybı en aza indiren dal onarmamaktır (-45 > -104,5).","o":["Don't repair, because -45 is the higher (less negative) expected value","Repair, because a negative test can still hide a fault","Don't repair, because the posterior P(F | T-) is exactly zero","Repair, because -104.5 has the larger absolute value"]},{"k":"mc","t":"L5&6","n":"L5&6 · Independence s.35","q":"Which condition is exactly equivalent to saying that events A and B are independent?","e":"Bağımsızlık çarpım kuralıyla tanımlanır ve P(A) = P(A|B) demeye denktir. Toplama kuralı ise BAĞIMSIZLIK değil, AYRIK (mutually exclusive) olayların özelliğidir.","o":["P(A ∩ B) = P(A) · P(B)","P(A or B) = P(A) + P(B)","P(A ∩ B) = 0","P(A) + P(B) = 1"]},{"k":"mc","t":"L5&6","n":"L5&6 · Sensitivity Graph: Monthly Rent s.7, 17, 19","q":"In the sensitivity graph of Net Annual Cost versus Monthly Rent, the Astoria St. line is perfectly horizontal. Why?","e":"Rental Income = Monthly Rent × Months Occupied; tabloda Astoria'nın Months Occupied = 0 ve Percentage Rented = 0% olduğu için kira ne olursa olsun net maliyet değişmez. Aynı nedenle Astoria tornado grafiğinde bu iki çubuk sıfır uzunluktadır.","o":["Astoria is not rented at all (0% rented, 0 months occupied), so rent has no effect on its net annual cost","Astoria's monthly rent is fixed by a long-term contract in the model","Monthly rent was held at its base-case value only for Astoria","Astoria's rental income exactly cancels its property tax"]},{"k":"mc","t":"L5&6","n":"L5&6 · Sensitivity Graphs or Tornado Diagrams? s.15","q":"According to the lecture, in what order should the two one-way tools be used?","e":"Tornado göreli etkiyi (hangisi önemli) verir, duyarlılık grafiği bireysel etkinin biçimini (eğim, kesişim, sıralama değişimi) gösterir; ikisi tamamlayıcıdır.","o":["First the tornado diagram to see which variables matter most, then the sensitivity graph to see the exact nature of each effect","First the sensitivity graph to rank the variables, then the tornado diagram to confirm the ranking","Only the tornado diagram; sensitivity graphs are redundant once bounds are known","Either one alone is sufficient, since they convey identical information"]},{"k":"tf","t":"VOI","n":"Value of Information · Information vs. Uncertainty s.4","q":"Information has value in a decision problem only if it results in a change in some action to be taken by the decision maker.","e":"Slayt 4'teki temel ilke birebir bu: bilgi karari degistirmiyorsa, ne kadar dogru olursa olsun parasal degeri sifirdir.","a":true},{"k":"tf","t":"VOI","n":"Value of Information · Some Comments on EVPI s.13","q":"The decision to obtain perfect information immediately eliminates uncertainty: as soon as the DM decides to buy it, he already knows which outcome will occur.","e":"Slayt 13: bilgiyi almaya karar vermek belirsizligi kaldirmaz; bilgi ELE GECENE kadar ne soyleyecegi belirsizdir, bu yuzden deger a priori bakis acisiyla hesaplanir.","a":false},{"k":"tf","t":"VOI","n":"Value of Information · Expected value of perfect information s.7","q":"Because EVPI describes a \"best case\" scenario, it provides an upper bound on the value of any real (imperfect) information source.","e":"Slayt 7 aynen boyle diyor: mukemmel bilgi en iyi durum senaryosudur, dolayisiyla gercek bir kaynaga EVPI'dan fazla odemek mantiksizdir.","a":true},{"k":"tf","t":"VOI","n":"Value of Information · Some Comments on EVPI s.12","q":"When EVPI is determined on a decision tree, the cost of the information must be entered on the information branch of the diagram.","e":"Slayt 12: EVPI belirlenirken agaca hicbir bilgi maliyeti yazilmaz; bulunan EVPI daha sonra istenen ucretle karsilastirilir.","a":false},{"k":"tf","t":"VOI","n":"Value of Information · ACME Conditional Probabilities s.19-21","q":"In the ACME case the national-market probabilities for the no-test branch (0.425, 0.37, 0.205) are three brand-new probabilities assessed separately from the test-market numbers.","e":"Slayt 19 acikca 'ucu yeni olasilik atayamayiz' diyor; sayilar P(N)=P(N|T1)P(T1)+P(N|T2)P(T2)+P(N|T3)P(T3) ile turetilir.","a":false},{"k":"tf","t":"VOI","n":"Value of Information · Recall - Example / Tree with II s.33, s.36","q":"In the drilling example the geologist is not a perfect predictor, so even after her report there is still uncertainty about whether oil exists.","e":"Slayt 33 jeologun mukemmel tahminci olmadigini soyler; slayt 36'daki agacta rapordan sonraki sonsal olasiliklar hala 0 ile 1 arasindadir, yani belirsizlik azalir ama yok olmaz.","a":true},{"k":"mc","t":"VOI","n":"Value of Information · Perfect Information (coin flip) s.8","q":"Coin-flip example, fair coin. A1: H = win $10, T = lose $2. A2: H = win $2, T = lose $1. What is the expected value of the lottery WITHOUT any information?","e":"A1: 0,5(10)+0,5(-2)=4; A2: 0,5(2)+0,5(-1)=0,5; bilgisiz karar en iyi alternatifi secmektir → max{4; 0,5}=4 dolar (slayt 8).","o":["$4.00, by choosing A1","$0.50, by choosing A2","$4.50","$2.25, the average of the two alternatives"]},{"k":"mc","t":"VOI","n":"Value of Information · With a Little Help s.10","q":"A clairvoyant friend can tell you the coin outcome in advance but cannot make an event occur. For the coin-flip example, what is the EVPI?","e":"Bilgiyle H'de A1 (10), T'de A2 (-1) secilir → 0,5(10)+0,5(-1)=4,50; EVPI = 4,50 - 4,00 = 0,50 dolar.","o":["$0.50","$4.50","$4.00","$6.00"]},{"k":"mc","t":"VOI","n":"Value of Information · With a Little Help s.11","q":"In the same coin-flip example, what would the expected value be if your friend could actually MAKE an event occur (not merely predict it)?","e":"Slayt 11'in cevabi 10 dolar: olayi yaratabiliyorsa her zaman H yaptirip A1 oynarsiniz; bu artik bilgi degil kontroldur.","o":["$10","$4.50","$4.00","$0.50"]},{"k":"mc","t":"VOI","n":"Value of Information · Perfect vs. Imperfect Information s.6","q":"Which statement matches the lecture's definition of \"perfect information\"?","e":"Slayt 6'daki tanim: sonucu HATASIZ bildirir. Sonucu yaratmaz (s.9), bedava olmak zorunda degildir, ve satin alma karari verildiginde belirsizlik hala surer (s.13).","o":["It is perfectly reliable, predicts outcomes correctly 100% of the time and therefore resolves the uncertainty — a \"crystal ball\" (clairvoyance)","It is information that is obtained at no cost, so buying it always improves the EMV","It is information that guarantees the most profitable outcome will actually occur","It is information that removes every chance node from the decision tree the moment the DM decides to buy it"]},{"k":"mc","t":"VOI","n":"Value of Information · ACME Interpreting the Tree s.16, s.24","q":"ACME: test-market fixed cost $3 million, unit margin $18, test-market \"great\" = 200 thousand units. What is the payoff if ACME test markets, the result is great, but it then decides NOT to market nationally?","e":"Slayt 24: 200x18 = 3.600 bin dolar katki, eksi 3.000 bin dolar test maliyeti = 600 bin dolar; ulusal pazara girilmediginden 90 milyonluk sabit maliyet olusmaz.","o":["$600 thousand","$3,600 thousand","-$3,000 thousand","$0"]},{"k":"mc","t":"VOI","n":"Value of Information · Conditional Probabilities s.18-21","q":"If ACME skips the test market, the probability of a \"great\" national market is 0.425. Where does this number come from?","e":"Test yapilmasa da ulusal sonuc ayni surecten gelir; kosulsuz olasilik, kosullu olasiliklarin test olasiliklariyla agirlikli toplamidir: 0,24+0,18+0,005=0,425.","o":["The law of total probability: 0.8(0.3) + 0.3(0.6) + 0.05(0.1) = 0.425","It is a fourth probability ACME assessed directly from national sales history","It is the simple average of the three conditional probabilities 0.8, 0.3 and 0.05","It is the test-market probability 0.30 revised upward because the national market is larger"]},{"k":"mc","t":"VOI","n":"Value of Information · Expected Value of Sample Information s.25-26","q":"The ACME tree gives an EMV of $807 thousand for test marketing (the $3 million test cost already subtracted) versus $0 for not testing. What is the EVSI — the most ACME should be willing to pay for the test market?","e":"EVSI = bedava bilgiyle EMV - bilgisiz EMV; agacta dusulmus olan 3 milyonluk ucret geri eklenir → 807 + 3.000 = 3.807 bin dolar (slayt 25-26).","o":["$3.807 million","$807 thousand","$3 million","$7.65 million"]},{"k":"mc","t":"VOI","n":"Value of Information · EVSI vs. EVPI s.25-27","q":"Folding back the ACME tree with perfect information about the national market produces an EMV of $7,650,000, while the EMV with no information is $0. Which conclusion follows?","e":"EVPI = 7,65 - 0 = 7,65 milyon (7.650 = 0,425 x 18.000); mukemmel bilgi ust sinir oldugu icin kusurlu test bilgisinin degerinden (3,807) buyuk olmak zorundadir.","o":["EVPI = $7.65 million, which is larger than the EVSI of $3.807 million","EVPI = $7.65 million, which is smaller than EVSI because sample information is cheaper to obtain","EVPI = $7.65 million - $3.807 million = $3.843 million","EVPI and EVSI cannot be compared because they are computed on different trees"]},{"k":"mc","t":"VOI","n":"Value of Information · Oil drilling example s.29-30","q":"You hold mineral rights: drilling strikes oil with probability 0.1 and the net payoff is $190K (the slide's $200K payoff less the $10K drilling cost), a dry hole costs -$10K, and not drilling pays $0. What is the EMV of drilling and what should you do?","e":"0,1(190) + 0,9(-10) = 19 - 9 = 10 bin dolar; 0'dan buyuk oldugu icin sondaj yapilir (slayt 30).","o":["$10K — drill","$19K — drill","$0 — do not drill, the chance of oil is only 10%","-$10K — do not drill"]},{"k":"mc","t":"VOI","n":"Value of Information · Decision Tree with PI s.32","q":"For the same drilling problem, a clairvoyant reveals in advance whether the well is wet or dry. The tree with the clairvoyant folds back to $19K. What is the EVPI?","e":"Bilgiyle petrol varsa delip 190, yoksa delmeyip 0 alirsiniz → 0,1(190)=19; EVPI = 19 - 10 = 9 bin dolar.","o":["$9K","$19K","$10K","$190K"]},{"k":"mc","t":"VOI","n":"Value of Information · Probability Assessment s.34","q":"The geologist says \"good\" with probability 0.95 when there is oil, and says \"poor\" with probability 0.85 when the hole is dry. With P(oil) = 0.1, what is P(\"good\")?","e":"Toplam olasilik kurali: 0,95(0,1) + 0,15(0,9) = 0,095 + 0,135 = 0,23; kuru arazide bile %15 ihtimalle 'iyi' der (slayt 34).","o":["0.23","0.95","0.41","0.095"]},{"k":"mc","t":"VOI","n":"Value of Information · Probability Assessment s.35","q":"Using the same figures, what is the posterior probability P(oil | \"good\")?","e":"Bayes: 0,095 / 0,23 = 0,41; jeolog 'iyi' dese bile petrol olasiligi 0,1'den yalnizca 0,41'e cikar, 1'e degil. 0,59 ise P(dry|'iyi').","o":["0.41","0.95","0.23","0.59"]},{"k":"mc","t":"VOI","n":"Value of Information · Recall - Example / Tree with II s.28, s.33, s.36","q":"Consulting the geologist folds back to an EMV of $16.56K, versus $10K for drilling with no information. She charges $7,000. What is the EVII and what should you do?","e":"EVII = 16,56 - 10 = 6,56 bin dolar, yani odenebilecek azami tutar; 7.000 dolarlik ucret bunun ustunde oldugu icin danismanlik net kayip yaratir.","o":["EVII = $6.56K; do not hire her, since her $7,000 fee exceeds $6.56K","EVII = $16.56K; hire her, since $16.56K is well above the $7,000 fee","EVII = $6.56K; hire her anyway, because her report reduces uncertainty","EVII = $9K; hire her, since imperfect information is worth as much as perfect information here"]},{"k":"tf","t":"UTL","n":"INE4307 Utility · St Petersburg Paradox s.2-5","q":"In the St. Petersburg game the EMV is infinite (1/2 x $2 + 1/4 x $4 + 1/8 x $8 + ... = infinity), yet virtually nobody would pay a huge amount to play it.","e":"Doğru: serinin her terimi 1 dolar katkı verir (1/2x2 = 1/4x4 = 1), toplam sonsuza gider; ama insanlar EMV'ye göre değil kendi risk tutumlarına göre karar verdiği için paradoks doğar.","a":true},{"k":"tf","t":"UTL","n":"INE4307 Utility · Risk Attitudes s.9","q":"For a risk-neutral decision maker, maximizing EMV can lead to a different alternative than maximizing expected utility.","e":"Yanlış: slayt risk-nötr karar vericiyi doğrusal fayda eğrisiyle tanımlar ve açıkça 'EMV'yi maksimize etmek beklenen faydayı maksimize etmeye eşittir' der; ikisi aynı alternatifi seçer.","a":false},{"k":"tf","t":"UTL","n":"INE4307 Utility · Stock Market Example s.13-14","q":"In the stock-market example the high-risk stock has the highest EMV ($580) while the low-risk stock has the highest expected utility (0.652).","e":"Doğru: slayttaki iki ağaçta EMV 580 (yüksek riskli) > 540 (düşük riskli) > 500 (tasarruf), ama EU 0,652 (düşük riskli) > 0,650 (tasarruf) > 0,638 (yüksek riskli). Para birimindeki en iyi ile fayda birimindeki en iyi farklı çıkar.","a":true},{"k":"tf","t":"UTL","n":"INE4307 Utility · Keeping Terms Straight s.23-24","q":"Since U(CE) = EU, the certainty equivalent is expressed in utility units, exactly like expected utility.","e":"Yanlış: eşitlik faydaların eşitliğidir. Slayt net söyler: 'CE bir dolar tutarıdır; EU fayda birimidir', bu yüzden CE ≠ EU.","a":false},{"k":"tf","t":"UTL","n":"INE4307 Utility · Risk Premium örneği s.18-19","q":"A decision maker whose gamble has EMV = $580 but who would sell the opportunity for $250 has a risk premium of $330 and is risk-averse.","e":"Doğru: RP = EMV - CE = 580 - 250 = 330 > 0. Slayt bu örneği 'kesinlikle riskten kaçınıyorsunuz' diye bitirir; pozitif risk primi riskten kaçınmanın tanımıdır.","a":true},{"k":"tf","t":"UTL","n":"INE4307 Utility · Exponential Utility Function s.37","q":"By choosing a suitable value of R, the exponential utility function U(x) = 1 - e^(-x/R) can also represent a risk-seeking decision maker.","e":"Yanlış: slayt bu denklemin R'den bağımsız olarak içbükey (concave) bir eğri, yani riskten kaçınan bir karar verici tanımladığını açıkça yazar.","a":false},{"k":"mc","t":"UTL","n":"INE4307 Utility · Stock Market Example s.13-14","q":"In the stock-market example the high-risk stock yields net payoffs of $1,500 with probability 0.5, $100 with probability 0.3 and -$1,000 with probability 0.2. What is its EMV?","e":"0,5(1500) + 0,3(100) + 0,2(-1000) = 750 + 30 - 200 = 580. 540 düşük riskli hissenin EMV'si, 500 tasarruf hesabının getirisi, 780 ise kayıp dalını (-1000) hesaba katmamanın sonucudur.","o":["$580","$540","$500","$780"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Stock Market Example s.11, 14","q":"Given the assessed utilities (high-risk stock EU = 0.638, low-risk stock EU = 0.652, savings account EU = 0.650), which alternative should the investor choose according to the expected-utility analysis?","e":"Fayda kullanıldığında kural en yüksek EU'yu seçmektir; 0,652 en büyüğüdür. EMV'ye geri dönmek fayda analizinin amacını ortadan kaldırır; risksiz olmak da tek başına seçim ölçütü değildir.","o":["The low-risk stock, because it has the highest expected utility","The high-risk stock, because its EMV of $580 is the largest","The savings account, because it is the only riskless alternative","None of them can be compared, since utility units are meaningless"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Risk s.6-7","q":"The course compares Game 1 (win $30 or lose $1, each with probability 0.5) with Game 2 (win $2,000 or lose $1,900, each with probability 0.5). What is the point of this example?","e":"EMV(Game 1) = 0,5(30) + 0,5(-1) = 14,50 ve EMV(Game 2) = 0,5(2000) + 0,5(-1900) = 50; yani EMV Game 2'yi söyler ama çoğu kişi Game 1'i tercih eder. Slayt tam da bunu 'EMV bireysel tercihleri ve risk tutumlarını hesaba katmaz' diye özetler.","o":["EMV ignores individual preferences and risk attitudes, so many people prefer Game 1 even though Game 2 has the larger EMV","The two games have exactly the same EMV, so every decision maker must be indifferent between them","Game 1 must be chosen because it has the larger EMV of the two","EMV cannot be computed at all when one of the payoffs is negative"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Risk / Risk Attitudes s.8-10","q":"Which statement describes the utility curve of a risk-averse decision maker?","e":"Daha fazla para her zaman iyidir (artan eğri) ama her ek doların katkısı azalır (içbükey). Dışbükey eğri riski seveni, doğrusal eğri risk nötrü gösterir; azalan eğri ise slaytların hiçbirinde yoktur.","o":["Upward sloping and concave (opening downward)","Upward sloping and convex (opening upward)","A straight line with positive slope","Downward sloping and concave"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Certainty Equivalent s.17, 20, 24","q":"What exactly is the certainty equivalent (CE) of a gamble?","e":"Tanım U(CE) = EU'dur: kumarla arasında kayıtsız kaldığınız kesin para tutarı, yani pozisyonunuzu satacağınız en düşük fiyat. CE'nin EMV'ye eşit olması yalnız risk nötr kişide görülen özel durumdur.","o":["The sure dollar amount whose utility equals the expected utility of the gamble","The expected monetary value of the gamble","The utility value obtained by plugging the EMV into the utility function","The largest payoff of the gamble weighted by its probability"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Exponential Utility Example s.39-40 + Risk Premium s.18","q":"A gamble pays $2,000 (p = 0.4), $1,000 (p = 0.4) or $500 (p = 0.2). With U(x) = 1 - e^(-x/900) the expected utility is 0.7102, so CE = -900 x ln(0.2898) = $1,114.71. What is the risk premium?","e":"EMV = 0,4(2000) + 0,4(1000) + 0,2(500) = 1300; RP = EMV - CE = 1300 - 1114,71 = 185,29. 1300 EMV'nin kendisi, 1115 ise CE'dir; negatif işaret riski seven bir kişiyi ima ederdi.","o":["About $185","About $1,115","About $1,300","About -$185"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Eliciting a Utility Curve s.28-30","q":"With the bounds U($100) = 1 and U($10) = 0, a decision maker is indifferent between a 50-50 gamble on $100/$10 and $30 for sure. What is U($30)?","e":"U(30) = 0,5(1) + 0,5(0) = 0,5. Fayda sayısı referans kumarın olasılıklarından gelir; 0,30 gibi dolar tutarını fayda sanmak tipik hatadır. 0,25 ve 0,75 sonraki adımların değerleridir.","o":["0.50","0.25","0.75","0.30"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Eliciting a Utility Curve s.30-31","q":"Continuing the elicitation, the decision maker is indifferent between a 50-50 gamble on $100/$30 and $50 for sure. Given U($100) = 1 and U($30) = 0.5, what is U($50)?","e":"U(50) = 0,5(1) + 0,5(0,5) = 0,75; bu 75. yüzdelik noktadır. 0,25 ise bir alt referans kumarından ($30/$10) elde edilen U($18) değeridir.","o":["0.75","0.50","0.25","0.65"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Assessing Using Probabilities s.33-35","q":"In the probability-equivalent (PE) technique the decision maker fixes a sure amount (e.g. $65) and adjusts p in the reference gamble '$100 with probability p, $10 with probability 1-p' until indifference. What does the resulting p equal?","e":"Kayıtsızlıkta U(65) = p(1) + (1-p)(0) = p, yani ayarlanan olasılık doğrudan fayda değeridir. CE tekniğinde olasılık sabit tutulup para aranır; PE tekniğinde tam tersi yapılır.","o":["The utility of the sure amount, i.e. U($65)","The certainty equivalent expressed in dollars","The risk premium expressed as a probability","The probability that the decision maker is risk-averse"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Risk Tolerance s.38","q":"How is the risk tolerance R of the exponential utility function assessed in this course?","e":"Slayt 'kazan $Y (0,5) / kaybet $Y/2 (0,5)' kumarında Y'yi çözer ve Y = R der. Büyük R, büyük risk toleransı yani daha az riskten kaçınma anlamına gelir; R kumarın EMV'sinden veya en büyük ödemesinden okunmaz.","o":["Find the Y that makes you just willing to accept a 50-50 gamble of winning $Y and losing $Y/2; that Y is R","Set R equal to the EMV of the gamble being analyzed","Set R equal to the largest payoff appearing in the decision tree","Set R equal to 1 - e^(-x) evaluated at the certainty equivalent"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Example (Step 1a-1b) s.21-22","q":"A gamble pays $4,000 (p = 0.40), $2,000 (p = 0.20), $0 (p = 0.15) and -$2,000 (p = 0.25). The utility curve gives U = 0.90, 0.82, 0.67 and 0.38 respectively. What is the expected utility?","e":"EU = 0,40(0,90) + 0,20(0,82) + 0,15(0,67) + 0,25(0,38) = 0,7195 ≈ 0,72. Bu değer y-ekseninden eğriye gidilerek CE = $400 olarak paraya çevrilir; 0,67 ve 0,82 ise tek tek ödemelerin faydalarıdır.","o":["0.72","0.67","0.82","0.60"]},{"k":"mc","t":"UTL","n":"INE4307 Utility · Risk Attitudes s.9-10 + Risk Premium s.18","q":"Which set of statements fits a risk-seeking decision maker?","e":"Riski seven kişi kazanmanın değerini abartır, dolayısıyla kumarı EMV'sinden pahalıya satar: CE > EMV ve RP = EMV - CE < 0. İçbükey/pozitif prim riskten kaçınana, doğrusal/sıfır prim risk nötre aittir; son şık kendi içinde çelişkilidir.","o":["Convex utility curve, CE greater than EMV, negative risk premium","Concave utility curve, CE below EMV, positive risk premium","Linear utility curve, CE equal to EMV, zero risk premium","Convex utility curve, CE below EMV, positive risk premium"]},{"k":"tf","t":"UTL","n":"INE4307-Utility · Alternate CE Calculations · s.41","q":"Pratt's approximate certainty equivalent is calculated as: Certainty Equivalent = Expected Value - 0.5 x (Variance / Risk Tolerance).","e":"Slayttaki yaklasik formul aynen budur: beklenen degerden varyans/R oraninin yarisi kadar bir risk primi dusulur. R buyudukce dusulen miktar kuculur, yani kisi riske daha az duyarli hale gelir.","a":true},{"k":"tf","t":"UTL","n":"INE4307-Utility · Preference Reversals · s.47","q":"Preference reversal is a bias in which decision makers choose the lottery with the HIGHER certainty equivalent.","e":"Tam tersi: tercih tersinmesi, CE'si DUSUK olan piyangonun secilmesidir. Mantik geregi CE(A) > CE(B) ise A tercih edilmeliydi; slayt dogrudan soruldugunda B'nin secildigini soyluyor.","a":false},{"k":"tf","t":"UTL","n":"INE4307-Utility · Endowment Effect · s.45","q":"According to utility theory a rational decision maker's minimum selling price should be close to the maximum buying price, and with an exponential utility function they should be exactly equal.","e":"Slayt bunu aynen soyler ve sahiplik (endowment) etkisini bu kuralin ihlali olarak tanimlar: satici degeri sisirince beklenenden fazla 'satis olmadi' durumu dogar.","a":true},{"k":"tf","t":"UTL","n":"INE4307-Utility · Decreasing and Constant Risk Aversion · s.48, 50","q":"Under decreasing risk aversion, adding a constant amount to all payoffs of a gamble INCREASES the risk premium.","e":"Azalan risk kacinmasinda tum odemelere sabit eklenince risk primi AZALIR. Slayttaki ln tablosu bunu gosterir: 10-40 oyununda RP=5 iken 40-70 oyununda RP=2.08'e duser.","a":false},{"k":"tf","t":"UTL","n":"INE4307-Utility · Axioms for Expected Utility (7. Finiteness) · s.65","q":"The finiteness axiom states that no consequence is considered infinitely good or infinitely bad, which assures that expected utility is never infinite.","e":"Sonluluk aksiyomu tam olarak bunu soyler. Slayt, bu sayede beklenen faydanin hicbir zaman sonsuz olmayacagini ve anlamli karsilastirma yapilabilecegini ekler.","a":true},{"k":"tf","t":"UTL","n":"INE4307-Utility · Allais Paradox · s.77-79","q":"The Allais paradox demonstrates that choosing A over B and D over C is fully consistent with expected utility theory.","e":"Slayt bu iki secimin CELISKI urettigini gosterir: A>B ise 0.11U(1M) > 0.1U(5M)+0.01U(0), D>C ise ayni ifade ters yonde cikar. Kaynak olarak kesinlik (certainty) etkisi gosterilir.","a":false},{"k":"mc","t":"UTL","n":"INE4307-Utility · Alternate CE Calculations · s.41-42","q":"A lottery pays 2000, 1000 and 500 with probabilities 0.4, 0.4 and 0.2. Its mean is 1300 and its variance is 360,000. Using Pratt's approximation with a risk tolerance of R = $900, what is the certainty equivalent?","e":"CE = 1300 - 0.5(360000/900) = 1300 - 200 = 1100. 1300 secilirse risk primi hic dusulmemis (risk notr) olur; 900 ise R degerinin kendisidir.","o":["$1,100","$1,300","$900","$700"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Decreasing and Constant Risk Aversion · s.49","q":"A gamble pays $10 or $40, each with probability 0.5. The decision maker has U(x) = ln(x). Given ln(10) = 2.3026 and ln(40) = 3.6889, what is the certainty equivalent?","e":"EU = 0.5(2.3026)+0.5(3.6889) = 2.9957 ve CE = e^2.9957 = 20. $25 EMV'dir; log fayda icbukey oldugu icin CE mutlaka EMV'nin altinda kalir.","o":["$20","$25","$15","$30"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Decreasing and Constant Risk Aversion · s.49","q":"For the same 50-50 gamble of $10 vs $40 with U(x) = ln(x), where EMV = $25 and CE = $20, what is the risk premium?","e":"RP = EMV - CE = 25 - 20 = 5 > 0 oldugundan karar verici riskten kacinandir; kesin $20'yi kumara esdeger gorup $5'lik farktan vazgecer.","o":["$5, indicating a risk-averse decision maker","-$5, indicating a risk-seeking decision maker","$0, indicating a risk-neutral decision maker","$20, equal to the certainty equivalent"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Decreasing and Constant Risk Aversion · s.50-51","q":"With U(x) = ln(x), the risk premiums for the 50-50 gambles 10-40, 20-50, 30-60 and 40-70 are 5.00, 3.38, 2.57 and 2.08 respectively. What does this pattern show?","e":"Her oyunda odemelere ayni sabit ekleniyor ama RP surekli dusuyor; bu azalan risk kacinmasinin tanimidir (slayt: para arttikca ayni bahis daha az tedirgin eder).","o":["Decreasing risk aversion: adding a constant to all payoffs lowers the risk premium","Constant risk aversion: the risk premium is unaffected by the payoff level","Increasing risk aversion: the decision maker gets more nervous as payoffs rise","Risk neutrality: the decision maker ignores variability altogether"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Decreasing and Constant Risk Aversion · s.53-54","q":"With U(x) = 1 - e^(-x/R), the risk premium for the 50-50 gambles 10-40, 20-50, 30-60 and 40-70 is 3.12 in every case. What does this illustrate?","e":"Ustel fayda sabit risk kacinmasi tasir: odemelere sabit eklemek RP'yi degistirmez, yani karar verme servetten (ya da servetsizlikten) etkilenmez.","o":["Constant risk aversion: the risk premium does not depend on the decision maker's initial wealth","Decreasing risk aversion: wealthier decision makers demand a smaller premium","That the exponential utility function is risk neutral","That the exponential utility function is only valid for small payoffs"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Endowment Effect · s.45","q":"Which statement best defines the endowment effect?","e":"Sahiplik etkisi satici tarafinda degeri sisirir ve teoriden beklenenden fazla 'satis olmadi' sonucu dogurur. Diger secenekler sirasiyla tercih tersinmesi, kesinlik etkisi ve prosedur degismezligi ihlalidir.","o":["Sellers overestimate the value of goods they own and set the minimum selling price too high","Decision makers choose the lottery with the lower certainty equivalent","Decision makers put too much weight on an outcome that is certain","Different elicitation procedures give different measurements of the same preference"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Pitfalls in Utility Assessment: Biases · s.43","q":"The principle that the CE method, the PE method or any other assessment method should not bias the shape of the assessed utility function is called:","e":"Prosedur degismezligi: ayni olguyu olcen farkli yontemler ayni olcumu vermelidir. Slayt arastirmanin bunun boyle olmadigini gosterdigini ekler.","o":["Procedure invariance","Monotonicity","Substitutability","Reduction of compound uncertain events"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Axioms for Expected Utility (2. Reduction) · s.58-59","q":"Which axiom states that a decision maker is indifferent between a compound uncertain event and the simple uncertain event obtained from it by standard probability manipulations?","e":"Indirgeme aksiyomu, iki asamali sansi (p sonra q) tek asamaya (pq) cevirmenin tercihleri degistirmedigini soyler; slayttaki iki karar agaci bunu gosterir.","o":["Reduction of compound uncertain events","Substitutability","Continuity","Invariance"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Axioms for Expected Utility (3. Continuity) · s.60","q":"For consequences with A1 > A > A2, we can always find a probability p (0 < p < 1) such that the decision maker is indifferent between A for sure and a gamble giving A1 with probability p and A2 with probability 1 - p. Which axiom is this?","e":"Sureklilik aksiyomu, her ara sonuca esdeger bir referans kumar kurulabilmesini garanti eder; fayda olcumunun temeli budur.","o":["Continuity","Monotonicity","Finiteness","Ordering and transitivity"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Equivalent under Utility Axioms · s.66-68","q":"In the classroom example, lottery A gives a 0.5 chance at $20 and a 0.5 chance at $15. The decision maker is indifferent between $20 and a reference gamble paying $40 with probability 0.60, and between $15 and a reference gamble paying $40 with probability 0.36. After substitution and reduction, what is A's overall probability of winning $40?","e":"0.5(0.60) + 0.5(0.36) = 0.48; bileske sans tek asamaya indirgenir. B'nin karsiligi 0.30 oldugundan monotonluk A'nin tercih edildigini soyler.","o":["0.48","0.96","0.50","0.36"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Example / Paradoxes · s.72-74","q":"In the Asian disease example, most people prefer the sure Program A when outcomes are framed as lives saved, but prefer the risky Program D when the identical outcomes are framed as deaths. What explains this?","e":"A ile C ayni sonucu (400 kurtulur = 200 olur), B ile D ayni kumari tanimlar; degisen tek sey referans noktasidir. Slayt: kazanc cercevesinde riskten kacinilir, kayip cercevesinde risk aranir (prospect theory).","o":["Framing shifts the reference point, and people are risk-averse for gains but risk-seeking for losses","People simply miscalculate the expected number of survivors in one of the two frames","The two frames describe genuinely different programs, so the choices are consistent","The certainty effect makes the risky option more attractive in both frames"]},{"k":"mc","t":"UTL","n":"INE4307-Utility · Allais Paradox / Certainty Effect · s.77-79","q":"In the Allais paradox, preferring A (a sure $1 million) to B, while also preferring D to C, produces a logical contradiction. Which effect is given as the source of this inconsistency?","e":"Karar 1'de kesin 1M var, Karar 2'de her iki secenek de belirsiz; kesinlige asiri agirlik verilmesi ayni fayda esitsizliginin iki karsit yonde cikmasina yol acar.","o":["Certainty effect: too much weight is placed on a certain outcome relative to uncertain ones","Endowment effect: the sure $1 million is treated as already owned","Reflection effect: losses loom larger than equivalent gains","Procedure invariance: the two decisions were elicited with different methods"]}];
+/* ==== /BANK ==== */
+
+const TOPICS = [
+  {id:"L1&2", label:"Introduction & Influence Diagrams", match:/^L1&2/i},
+  {id:"L3&4", label:"Decision Trees, Risk Profiles, Dominance", match:/^L3&4/i},
+  {id:"L5&6", label:"Sensitivity Analysis & Probability", match:/^L5&6/i},
+  {id:"VOI",  label:"Value of Information", match:/^VOI/i},
+  {id:"UTL",  label:"Utility & Risk Attitudes", match:/^(UTL|Utility)/i},
+];
+function topicOf(q){
+  const t = TOPICS.find(t=>t.match.test(q.n||""));
+  return t ? t.id : "L1&2";
+}
+BANK.forEach((q,i)=>{ q._i=i; q._t=q.t || topicOf(q); });
+
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem("ine4307:"+k); return v==null?d:JSON.parse(v);}catch(e){return d} },
+  set(k,v){ try{ localStorage.setItem("ine4307:"+k, JSON.stringify(v)); }catch(e){} },
+};
+
+let sel = { kinds:new Set(store.get("kinds",["tf","mc"])), topics:new Set(store.get("topics",TOPICS.map(t=>t.id))) };
+let queue=[], pos=0, right=0, wrong=[], answered=false, wrongOnly=false;
+
+const app = document.getElementById("app");
+const foot = document.getElementById("foot");
+const sPos = document.getElementById("sPos");
+const sAcc = document.getElementById("sAcc");
+const pbar = document.getElementById("pbar");
+
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function pool(){
+  return BANK.filter(q=>sel.kinds.has(q.k) && sel.topics.has(q._t));
+}
+
+function setBar(){
+  if(!queue.length){ sPos.textContent="—"; sAcc.textContent=""; pbar.style.width="0%"; return; }
+  sPos.textContent = `${Math.min(pos+1,queue.length)} / ${queue.length}`;
+  const done = pos + (answered?1:0);
+  sAcc.innerHTML = done ? `accuracy <b>${Math.round(right/done*100)}%</b>` : "";
+  pbar.style.width = (done/queue.length*100).toFixed(1)+"%";
+}
+
+/* ---------------- setup ---------------- */
+function renderSetup(){
+  const counts = {};
+  TOPICS.forEach(t=>counts[t.id]=BANK.filter(q=>q._t===t.id).length);
+  const tfN = BANK.filter(q=>q.k==="tf").length;
+  const mcN = BANK.filter(q=>q.k==="mc").length;
+  const n = pool().length;
+
+  app.innerHTML = `
+    <div class="hero">
+      <div class="eyebrow">31 August · 10:30 · D-305</div>
+      <h1>Part A &amp; Part B, ${BANK.length} questions deep</h1>
+      <p class="lede">Every question is drawn from the lecture slides. Answer, see whether you were right, and read why before moving on. Wrong answers are collected so you can run them again.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Question type</h2>
+      <div class="opts" id="kinds">
+        <button class="chip" data-k="tf" aria-pressed="${sel.kinds.has("tf")}">True / False <span class="ct">${tfN}</span></button>
+        <button class="chip" data-k="mc" aria-pressed="${sel.kinds.has("mc")}">Multiple choice <span class="ct">${mcN}</span></button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Topics</h2>
+      <div class="opts" id="topics">
+        ${TOPICS.map(t=>`<button class="chip" data-t="${t.id}" aria-pressed="${sel.topics.has(t.id)}">${esc(t.label)} <span class="ct">${counts[t.id]}</span></button>`).join("")}
+      </div>
+    </div>
+
+    <button class="start" id="go" ${n?"":"disabled"}>${n?`Start · ${n} questions`:"Choose at least one type and topic"}</button>
+    <div class="hint">Keys — <kbd>1</kbd>…<kbd>4</kbd> answer · <kbd>T</kbd>/<kbd>F</kbd> true or false · <kbd>Enter</kbd> next</div>
+  `;
+  foot.innerHTML = `Questions are generated from the INE4307 lecture decks and cross-checked against them. Explanations are in Turkish. Nothing here is an official exam paper.`;
+
+  app.querySelectorAll("#kinds .chip").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k; sel.kinds.has(k)?sel.kinds.delete(k):sel.kinds.add(k);
+    store.set("kinds",[...sel.kinds]); renderSetup();
+  });
+  app.querySelectorAll("#topics .chip").forEach(b=>b.onclick=()=>{
+    const t=b.dataset.t; sel.topics.has(t)?sel.topics.delete(t):sel.topics.add(t);
+    store.set("topics",[...sel.topics]); renderSetup();
+  });
+  const go=document.getElementById("go");
+  if(go) go.onclick=()=>begin(shuffle(pool()),false);
+  setBar();
+}
+
+function begin(list, isRetry){
+  queue=list; pos=0; right=0; wrong=[]; answered=false; wrongOnly=isRetry;
+  foot.innerHTML="";
+  renderQ();
+}
+
+/* ---------------- question ---------------- */
+function renderQ(){
+  const q=queue[pos];
+  answered=false;
+  const isTF = q.k==="tf";
+  const opts = isTF
+    ? [{txt:"True", ok:q.a===true},{txt:"False", ok:q.a===false}]
+    : shuffle(q.o.map((t,i)=>({txt:t, ok:i===0})));
+
+  app.innerHTML = `
+    <div class="qhead">
+      <span class="kind">${isTF?"True / False":"Multiple choice"}</span>
+      <span class="src">${esc(q.n||"")}</span>
+    </div>
+    <p class="q">${esc(q.q)}</p>
+    <div class="choices" id="ch">
+      ${opts.map((o,i)=>`<button class="choice" data-i="${i}" data-ok="${o.ok}">
+         <span class="key">${isTF?(i===0?"T":"F"):String.fromCharCode(65+i)}</span>
+         <span>${esc(o.txt)}</span></button>`).join("")}
+    </div>
+    <div id="after"></div>
+  `;
+  app.querySelectorAll(".choice").forEach(b=>b.onclick=()=>pick(b, opts));
+  setBar();
+  window.scrollTo({top:0,behavior:"instant"});
+}
+
+function pick(btn, opts){
+  if(answered) return;
+  answered=true;
+  const q=queue[pos];
+  const ok = btn.dataset.ok==="true";
+  if(ok) right++; else wrong.push(q);
+
+  app.querySelectorAll(".choice").forEach(b=>{
+    b.disabled=true;
+    const bok=b.dataset.ok==="true";
+    if(b===btn) b.classList.add(ok?"pick-ok":"pick-bad");
+    else if(bok) b.classList.add("reveal");
+    else b.classList.add("dim");
+  });
+
+  const correctTxt = opts.find(o=>o.ok).txt;
+  document.getElementById("after").innerHTML = `
+    <div class="fb ${ok?"ok":"bad"}">
+      <div class="verdict">${ok?"Doğru":"Yanlış — doğrusu: "+esc(correctTxt)}</div>
+      <div class="body">${esc(q.e||"")}</div>
+    </div>
+    <div class="nav">
+      <button class="next" id="next">${pos+1<queue.length?"Next question":"See results"}</button>
+      <button class="ghost" id="quit">End</button>
+    </div>
+  `;
+  document.getElementById("next").onclick=advance;
+  document.getElementById("quit").onclick=results;
+  document.getElementById("next").focus();
+  setBar();
+}
+
+function advance(){
+  if(pos+1<queue.length){ pos++; renderQ(); } else results();
+}
+
+/* ---------------- results ---------------- */
+function results(){
+  const done = pos + (answered?1:0);
+  const pct = done? Math.round(right/done*100) : 0;
+  const seen = queue.slice(0, done);
+  const byT = {};
+  seen.forEach(q=>{ (byT[q._t] ||= {n:0,r:0}).n++; });
+  seen.forEach(q=>{ if(!wrong.includes(q)) byT[q._t].r++; });
+
+  const rows = TOPICS.filter(t=>byT[t.id]).map(t=>{
+    const d=byT[t.id]; const p=Math.round(d.r/d.n*100);
+    const col = p>=80?"var(--ok)":p>=55?"var(--stat)":"var(--bad)";
+    return `<div class="trow">
+      <span class="tname">${esc(t.label)}</span>
+      <span class="tpct" style="color:${col}">${p}%</span>
+      <span class="tbar"><i style="width:${p}%;background:${col}"></i></span>
+    </div>`;
+  }).join("");
+
+  app.innerHTML = `
+    <div class="hero">
+      <div class="eyebrow">${wrongOnly?"Retry round":"Session complete"}</div>
+      <div class="score-big">${right}<span style="color:var(--ink-3)">/${done}</span></div>
+      <div class="score-sub">${pct}% correct${wrong.length?` · ${wrong.length} to review`:" · nothing missed"}</div>
+    </div>
+    ${rows?`<div class="panel"><h2>Accuracy by topic</h2>${rows}</div>`:""}
+    ${wrong.length?`<button class="start" id="again">Run the ${wrong.length} I missed</button>`:""}
+    <div class="nav" style="margin-top:12px">
+      <button class="ghost" id="home" style="flex:1">Back to setup</button>
+    </div>
+  `;
+  const a=document.getElementById("again");
+  if(a) a.onclick=()=>begin(shuffle(wrong.slice()),true);
+  document.getElementById("home").onclick=renderSetup;
+  foot.innerHTML = wrong.length
+    ? `Weakest topic first. A topic under 55% is worth re-reading in the slides before drilling it again.`
+    : ``;
+  pbar.style.width="100%";
+}
+
+/* ---------------- keyboard ---------------- */
+document.addEventListener("keydown", e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const chs=[...document.querySelectorAll(".choice")];
+  if(!answered && chs.length){
+    const q=queue[pos];
+    if(q && q.k==="tf"){
+      if(/^t$/i.test(e.key)){ chs[0].click(); e.preventDefault(); return; }
+      if(/^f$/i.test(e.key)){ chs[1].click(); e.preventDefault(); return; }
+    }
+    const n=parseInt(e.key,10);
+    if(n>=1 && n<=chs.length){ chs[n-1].click(); e.preventDefault(); return; }
+    if(/^[a-d]$/i.test(e.key)){
+      const i="abcd".indexOf(e.key.toLowerCase());
+      if(i<chs.length){ chs[i].click(); e.preventDefault(); }
+      return;
+    }
+  }
+  if(answered && (e.key==="Enter"||e.key===" "||e.key==="ArrowRight")){
+    const nx=document.getElementById("next"); if(nx){ nx.click(); e.preventDefault(); }
+  }
+});
+
+renderSetup();
+</script>
