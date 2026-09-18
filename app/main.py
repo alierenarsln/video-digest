@@ -289,46 +289,6 @@ async def list_jobs(limit: int = 50) -> list[dict]:
     return db.list_jobs(max(1, min(limit, 2000)))
 
 
-def _yonetici_mi(request: Request) -> bool:
-    """Yalnız ana hesap (APP_USER) HTTP Basic ile. Ek kullanıcılar değil."""
-    h = request.headers.get("authorization") or ""
-    if not h.startswith("Basic "):
-        return False
-    try:
-        import base64 as _b64
-        kul, _, sifre = _b64.b64decode(h[6:]).decode("utf-8").partition(":")
-    except Exception:
-        return False
-    return secrets.compare_digest(kul.strip(), APP_USER) and auth.verify_password(sifre)
-
-
-@app.get("/api/goc/envanter", include_in_schema=False)
-async def goc_envanter(request: Request) -> dict:
-    """Coolify → Vercel taşıması için tam envanter (SALT OKUNUR): tüm iş satırları
-    (ham), ek kullanıcılar (hash'li — Vercel'de de girebilsinler) ve OUT_DIR'deki
-    her çıktı dosyası (yol + boyut). Dosyaların kendisi /out/<yol>'dan çekilir.
-    Taşıma bitince kaldırılacak."""
-    if not _yonetici_mi(request):
-        raise HTTPException(403, "yalnız yönetici (Basic)")
-
-    def topla() -> dict:
-        from .dbconn import connect as _baglan
-        with _baglan() as c:
-            isler = [dict(r) for r in c.execute("SELECT * FROM jobs ORDER BY created_at")]
-            try:
-                kul = [dict(r) for r in c.execute("SELECT * FROM users")]
-            except Exception:
-                kul = []
-        dosyalar = [
-            {"yol": p.relative_to(OUT_DIR).as_posix(), "bayt": p.stat().st_size}
-            for p in (OUT_DIR.rglob("*") if OUT_DIR.exists() else [])
-            if p.is_file()
-        ]
-        return {"isler": isler, "kullanicilar": kul, "dosyalar": dosyalar}
-
-    return await asyncio.to_thread(topla)
-
-
 @app.get("/api/providers")
 async def providers() -> list[dict]:
     return _providers()
