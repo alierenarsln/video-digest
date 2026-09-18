@@ -1125,7 +1125,8 @@ const _partNo = (pid, j) => parseInt(j.id.slice(pid.length + 1), 10) || 0;
 async function kitaplikGoster() {
   _durumYaz("kitaplik");
   ekran("kitaplik");
-  const isler = await (await fetch("/api/jobs")).json();
+  // Kitaplık TÜM işleri ister; yan menü yoklaması 50 ile hafif kalır.
+  const isler = await (await fetch("/api/jobs?limit=2000")).json();
   const { videolar, uye } = _videoGruplari(isler);
 
   // Koleksiyona göre üst-grupla: tekil işler + video-grupları.
