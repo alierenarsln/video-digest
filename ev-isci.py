@@ -45,7 +45,10 @@ def _env_yukle() -> None:
             f"vercel env pull .env.vercel --environment=production"
         )
     # Yerel .env: API anahtarları + makineye özel ayarlar (TESSERACT_CMD...).
-    load_dotenv(Path(os.environ.get("EV_YEREL_ENV", KOK / ".env")))
+    # override=True ŞART: Windows kullanıcı ortamında ESKİ bir OPENROUTER_API_KEY
+    # tanımlıydı; her süreç onu miras alıyor, override'sız .env'deki YENİ anahtar
+    # yok sayılıyor ve işler 401 alıyordu (ölçümde yakalandı). Bu PC'de .env esas.
+    load_dotenv(Path(os.environ.get("EV_YEREL_ENV", KOK / ".env")), override=True)
     # Vercel env'i ÜSTÜNE — ama yalnız DOLU değerler. Vercel'de "Sensitive" işaretli
     # değişkenler (API anahtarları, şifre) `env pull` ile BOŞ gelir; onlar yerel
     # .env'dekini ezmemeli. Böylece sırlar Vercel'den dışarı hiç çıkmaz; buradan
