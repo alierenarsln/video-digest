@@ -36,6 +36,7 @@ from .config import (
     IN_DOCKER,
     ON_VERCEL,
     LLM_PROVIDER,
+    MAX_YUKLEME_MB,
     OUT_DIR,
     OUTPUT_LANGUAGE,
     PROVIDER_INFO,
@@ -419,6 +420,69 @@ async def _save_upload(file: UploadFile, job_id: str) -> tuple[Path, int]:
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "boş dosya")
     return dest, boyut
+
+
+# --- Vercel: tarayıcıdan doğrudan Blob'a yükleme (Faz 4) ---------------------
+# Vercel'in istek gövdesi sınırı 4.5 MB olduğu için dosya sunucudan geçemez:
+# tarayıcı /api/blob/izin'den tek yola kilitli bir izin alır, dosyayı DOĞRUDAN
+# Blob'a yükler (büyükse parçalı), sonra /jobs/blob ile işi oluşturur. Coolify'da
+# (Blob yok) bu uçlar 404 döner, arayüz eski /jobs/upload yolunu kullanır.
+_GIRIS_RE = re.compile(r"^in/[0-9a-f]{12}/[^/]{1,180}$")
+
+
+class BlobIsIstegi(BaseModel):
+    pathname: str
+    dosya_adi: str = ""
+    provider: str | None = None
+    sadece_ses: bool = False
+
+
+@app.get("/api/yukleme")
+async def yukleme_modu() -> dict:
+    """Arayüz hangi yükleme yolunu kullanacağını buradan öğrenir."""
+    return {"blob": storage.USE_BLOB, "max_mb": MAX_YUKLEME_MB}
+
+
+@app.post("/api/blob/izin")
+async def blob_izin(request: Request) -> dict:
+    """@vercel/blob/client upload()'ın handleUploadUrl protokolü — yalnız izin
+    üretimi (onUploadCompleted kullanmıyoruz: iş, yükleme bitince tarayıcının
+    /jobs/blob çağrısıyla oluşur; Vercel'den gelen imzalı geri çağrıya gerek yok)."""
+    if not storage.USE_BLOB:
+        raise HTTPException(404, "Blob yükleme bu ortamda kapalı")
+    govde = await request.json()
+    if govde.get("type") != "blob.generate-client-token":
+        raise HTTPException(400, "desteklenmeyen istek türü")
+    yol = (govde.get("payload") or {}).get("pathname") or ""
+    if not _GIRIS_RE.match(yol):
+        raise HTTPException(400, "geçersiz yükleme yolu")
+    return {
+        "type": "blob.generate-client-token",
+        "clientToken": storage.istemci_izni(yol, MAX_YUKLEME_MB * 1024 * 1024),
+    }
+
+
+@app.post("/jobs/blob")
+async def blob_is(req: BlobIsIstegi) -> dict:
+    """Blob'a yüklenmiş dosyadan iş oluştur (kaynak = 'blob:<yol>'); ev işçisi
+    işi kapınca dosyayı indirip işler."""
+    if not storage.USE_BLOB:
+        raise HTTPException(404, "Blob yükleme bu ortamda kapalı")
+    if not _GIRIS_RE.match(req.pathname):
+        raise HTTPException(400, "geçersiz yükleme yolu")
+    boyut = await asyncio.to_thread(storage.kaynak_boyutu, req.pathname)
+    if boyut is None:
+        raise HTTPException(409, "dosya Blob'da yok — yükleme tamamlanmamış olabilir")
+    secilen = _validate_provider(req.provider)
+    job_id = uuid.uuid4().hex[:12]
+    db.create_job(job_id, storage.BLOB_ONEK + req.pathname, DEFAULT_CALLBACK_URL, secilen)
+    orig = Path(req.dosya_adi or "").stem.strip()
+    if orig:
+        db.update(job_id, title=orig)
+    if req.sadece_ses:
+        db.update(job_id, audio_only=1)
+    await worker.enqueue(job_id)
+    return {"job_id": job_id, "status": "queued", "provider": secilen, "bayt": boyut}
 
 
 @app.post("/jobs/upload")

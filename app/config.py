@@ -233,6 +233,9 @@ PART_CONCURRENCY = _int("PART_CONCURRENCY", 3)
 # belgeler için); daha büyükleri düzenli işleyeceksen env'den (MAX_PDF_PAGES)
 # artır. Uzun PDF zaten PART_PAGES'a göre parçalanıp paralel özetlenir.
 MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 600)
+# Tarayıcıdan doğrudan Blob'a yüklemede tek dosya üst sınırı (Vercel modu).
+# İzin bu boyuta kilitlenir; aşan yükleme Blob tarafından reddedilir.
+MAX_YUKLEME_MB = _int("MAX_YUKLEME_MB", 2048)
 # Uzun PDF de (uzun video gibi) parçalara bölünür: sayfa sayısı ~PART_PAGES'ı
 # belirgin aşarsa her parça AYRI özetlenir (part sayısı = round(sayfa/PART_PAGES)).
 # Tek dev özet 200 sayfada max_tokens'ı taşırıyor + gezilmesi zor.

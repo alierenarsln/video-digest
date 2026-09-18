@@ -1547,9 +1547,62 @@ function sifirlaDosya() {
   formSecenekleriGuncelle();
 }
 
+// Yükleme modu sunucudan bir kez öğrenilir. Vercel'de (blob:true) dosya sunucudan
+// GEÇEMEZ (4.5 MB istek sınırı): tarayıcı kısa ömürlü bir izinle DOĞRUDAN Blob'a
+// yükler, sonra işi oluşturur. Coolify'da (blob:false / eski sunucu) bugünkü XHR.
+let _yuklemeModu = null;
+async function yuklemeModu() {
+  if (_yuklemeModu) return _yuklemeModu;
+  try {
+    const r = await fetch("/api/yukleme");
+    _yuklemeModu = r.ok ? await r.json() : { blob: false };
+  } catch { _yuklemeModu = { blob: false }; }
+  return _yuklemeModu;
+}
+
+function ilerlemeGoster(oran) {
+  $("#ilerleme").style.display = "block";
+  $("#ilerlemeCubuk").style.width = (oran * 100) + "%";
+  $("#btnDosya").textContent = `Yükleniyor… ${Math.round(oran * 100)}%`;
+}
+
+async function yukle(dosya, provider, ses) {
+  const mod = await yuklemeModu();
+  return mod.blob ? yukleBlob(dosya, provider, ses, mod) : yukleForm(dosya, provider, ses);
+}
+
+async function yukleBlob(dosya, provider, ses, mod) {
+  if (dosya.size > mod.max_mb * 1024 * 1024) {
+    throw new Error(`Dosya çok büyük: en fazla ${mod.max_mb} MB.`);
+  }
+  const { upload } = await import("/static/vendor/blob-client.js");
+  // Yol: in/<12 hex rastgele>/<dosya adı>. Sunucu yalnız bu biçime izin verir ve
+  // izni TAM bu yola + boyut sınırına kilitler.
+  const anahtar = Array.from(crypto.getRandomValues(new Uint8Array(6)),
+    (b) => b.toString(16).padStart(2, "0")).join("");
+  const ad = (dosya.name || "dosya").replace(/[\/\\]/g, "_").slice(-180);
+  const yol = `in/${anahtar}/${ad}`;
+  await upload(yol, dosya, {
+    access: "private",
+    handleUploadUrl: "/api/blob/izin",
+    // Büyük dosya parçalara bölünür, paralel yüklenir, kopan parça yeniden denenir.
+    multipart: dosya.size > 20 * 1024 * 1024,
+    onUploadProgress: (e) => ilerlemeGoster(e.total ? e.loaded / e.total : 0),
+  });
+  const r = await fetch("/jobs/blob", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pathname: yol, dosya_adi: dosya.name, provider: provider || null, sadece_ses: !!ses }),
+  });
+  let d = {};
+  try { d = await r.json(); } catch {}
+  if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+  return d;
+}
+
 // Yükleme XHR ile: fetch yükleme ilerlemesi vermiyor, 500 MB'lık videoda
 // göstergesiz beklemek "dondu mu?" hissi veriyor.
-function yukle(dosya, provider, ses) {
+function yukleForm(dosya, provider, ses) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", dosya);
@@ -1560,9 +1613,7 @@ function yukle(dosya, provider, ses) {
     x.open("POST", "/jobs/upload");
     x.upload.onprogress = (e) => {
       if (!e.lengthComputable) return;
-      $("#ilerleme").style.display = "block";
-      $("#ilerlemeCubuk").style.width = (e.loaded / e.total * 100) + "%";
-      $("#btnDosya").textContent = `Yükleniyor… ${Math.round(e.loaded / e.total * 100)}%`;
+      ilerlemeGoster(e.loaded / e.total);
     };
     x.onload = () => {
       let d = {};

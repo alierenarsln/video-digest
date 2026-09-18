@@ -188,8 +188,8 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
             db.create_job(cid, job["source"], None, provider)
             out = OUT_DIR / f"{cid}.md"
             out.write_text(p_md, encoding="utf-8")
-            db.update(
-                cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+            await _bitir(
+                cid, title=p_title, collection=koleksiyon,
                 origin_url=origin_url, result_path=str(out),
                 meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
             )
@@ -234,8 +234,8 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     out = OUT_DIR / f"{job_id}.md"
     out.write_text(combined, encoding="utf-8")
     ilk = ozetler[0][1] if ozetler else None
-    db.update(
-        job_id, status="done", stage="done", collection=koleksiyon,
+    await _bitir(
+        job_id, collection=koleksiyon,
         title=f"{base_title} — Tüm hali",
         result_path=str(out),
         meta={
@@ -264,6 +264,13 @@ async def _process(job_id: str) -> None:
     # PDF gezilemeyen bir kaynak (SPEC §0): ayrı hat — ses/kare yok, sayfa var.
     # Ama AYNI defter: segment + summarize + karantina değişmeden koşar.
     # Markdown/metin: en basit hat — transkript/OCR yok, metin zaten okunabilir.
+    # Vercel'den tarayıcıyla yüklenen dosya: kaynak "blob:in/...". Önce yerel diske
+    # indir; hat (PDF/metin/video ayrımı dahil) oradan hiç değişmeden devam eder.
+    if job["source"].startswith(storage.BLOB_ONEK):
+        db.update(job_id, status="running", stage="fetch")
+        job["source"] = str(await asyncio.to_thread(
+            storage.indir_kaynak, job_id, job["source"], UPLOAD_DIR
+        ))
     kaynak = job["source"]
     if not kaynak.startswith(("http://", "https://")):
         suffix = Path(kaynak).suffix.lower()
@@ -367,10 +374,8 @@ async def _process(job_id: str) -> None:
     out_path = OUT_DIR / f"{job_id}.md"
     out_path.write_text(markdown, encoding="utf-8")
 
-    db.update(
+    await _bitir(
         job_id,
-        status="done",
-        stage="done",
         result_path=str(out_path),
         meta={
             **source.meta,
@@ -452,8 +457,8 @@ async def _process_document_long(
                 db.create_job(cid, job["source"], None, provider)
                 (OUT_DIR / f"{cid}.md").write_text(p_md, encoding="utf-8")
                 (OUT_DIR / f"{cid}.transcript.txt").write_text(p_tr, encoding="utf-8")
-                db.update(
-                    cid, status="done", stage="done", title=p_title, collection=koleksiyon,
+                await _bitir(
+                    cid, title=p_title, collection=koleksiyon,
                     result_path=str(OUT_DIR / f"{cid}.md"),
                     meta={
                         "kind": "document", "part_of": job_id,
@@ -492,8 +497,8 @@ async def _process_document_long(
     tpath = OUT_DIR / f"{job_id}.transcript.txt"
     tpath.write_text(transcribe.to_timestamped_text(document.to_segments(pages)), encoding="utf-8")
     ilk = ozetler[0][1] if ozetler else None
-    db.update(
-        job_id, status="done", stage="done", collection=koleksiyon,
+    await _bitir(
+        job_id, collection=koleksiyon,
         title=f"{base_title} — Tüm hali", result_path=str(OUT_DIR / f"{job_id}.md"),
         meta={
             "kind": "document", "is_combined": True, "parts": n,
@@ -584,10 +589,8 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     okunan = sum(1 for p in pages if not p.quarantined and p.text.strip())
     oranlar = [p.word_ratio for p in pages if p.word_ratio is not None]
 
-    db.update(
+    await _bitir(
         job_id,
-        status="done",
-        stage="done",
         result_path=str(out_path),
         meta={
             "kind": "document",
@@ -659,10 +662,8 @@ async def _process_text(job_id: str, path: Path, work: Path) -> None:
     out_path.write_text(markdown, encoding="utf-8")
 
     kelime = sum(len(p.text.split()) for p in pages)
-    db.update(
+    await _bitir(
         job_id,
-        status="done",
-        stage="done",
         result_path=str(out_path),
         meta={
             "kind": "markdown",
@@ -681,6 +682,23 @@ async def _process_text(job_id: str, path: Path, work: Path) -> None:
     shutil.rmtree(work, ignore_errors=True)
 
 
+# Çalışan işin başlangıç anı: _bitir yalnız bu andan sonra yazılan çıktıları yükler.
+_is_t0: float = 0.0
+
+
+async def _bitir(job_id: str, **alanlar) -> None:
+    """İşi 'done' işaretle — ama ÖNCE çıktılarını kalıcı depoya (Blob) yükle.
+
+    Sıra kritik: 'done' görünür görünmez arayüz özeti ister. Önce işaretleyip sonra
+    yüklersek (eski sıra) kısa süre "özet bulunamadı" döner; işçi tam o arada
+    kapanırsa (PC kapandı, Ctrl+C) iş kalıcı olarak 'done' ama özetsiz kalır
+    (testte yakalandı). Coolify'da (Blob yok) yükleme no-op, davranış aynı.
+    Parça işleri de buradan geçer; storage aynı dosyayı iki kez yüklemez.
+    """
+    await asyncio.to_thread(storage.sync_since, _is_t0)
+    db.update(job_id, status="done", stage="done", **alanlar)
+
+
 def _saklama_temizle(job_id: str) -> None:
     """İş bittikten sonra yüklenen kaynağı (en büyük dosya) sil — özet/transkript/
     slaytlar kalır. delete_job ile aynı desen (UPLOAD_DIR/<id>.*); origin_url DB'de
@@ -688,6 +706,14 @@ def _saklama_temizle(job_id: str) -> None:
     """
     if not DELETE_SOURCE_AFTER_DONE:
         return
+    # Vercel: tarayıcının Blob'a yüklediği kaynak da gitsin (Hobby depolama kotası).
+    kaynak = (db.get(job_id) or {}).get("source") or ""
+    if kaynak.startswith(storage.BLOB_ONEK):
+        try:
+            storage.sil_kaynak(kaynak)
+            print(f"[saklama] {job_id} Blob kaynagi silindi", flush=True)
+        except Exception as exc:
+            print(f"[saklama] {job_id} Blob kaynagi silinemedi: {exc!r}", flush=True)
     bayt = 0
     for p in UPLOAD_DIR.glob(f"{job_id}.*"):
         try:
@@ -741,6 +767,8 @@ def _hata_acikla(exc: Exception) -> str:
 
 async def _run_one(job_id: str) -> None:
     t0 = time.time()  # işlenme süresi: kuyruk beklemesi HARİÇ, running→done
+    global _is_t0
+    _is_t0 = t0
     try:
         await _process(job_id)
         # Yalnızca BAŞARILI işte kaynağı at; hata olursa dosya kalsın ki
