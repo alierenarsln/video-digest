@@ -336,25 +336,25 @@ async def pending_downloads() -> list[dict]:
     return out
 
 
-# Ev-agent'ının son "yaşıyorum" sinyali. Bellekte tutuluyor — sunucu yeniden
-# başlarsa sıfırlanır, agent bir sonraki turda yine ping'ler (kalıcılık gereksiz).
-_agent_last_seen: float | None = None
+# Ev bilgisayarının son "yaşıyorum" sinyali DB'de (kv: agent_seen). Eskiden
+# bellekteydi; Vercel'de her istek başka örneğe düşebildiği için bellek paylaşılmaz.
+# İki kaynak da yazar: agent.ps1 (HTTP heartbeat) ve ev-isci.py (doğrudan DB).
 _AGENT_ONLINE_ESIK = 90  # sn: bu süre içinde ping geldiyse "çevrimiçi"
 
 
 @app.post("/api/agent/heartbeat")
 async def agent_heartbeat() -> dict:
     """Ev-agent'ı periyodik ping'ler; site 'ev bilgisayarı çevrimiçi mi' bilsin."""
-    global _agent_last_seen
-    _agent_last_seen = time.time()
+    await asyncio.to_thread(db.kv_set, "agent_seen", "agent.ps1")
     return {"ok": True}
 
 
 @app.get("/api/agent/status")
 async def agent_status() -> dict:
-    if _agent_last_seen is None:
+    kayit = await asyncio.to_thread(db.kv_get, "agent_seen")
+    if kayit is None:
         return {"online": False, "ever_seen": False, "seconds_ago": None}
-    ago = time.time() - _agent_last_seen
+    ago = time.time() - float(kayit["t"])
     return {"online": ago <= _AGENT_ONLINE_ESIK, "ever_seen": True, "seconds_ago": int(ago)}
 
 

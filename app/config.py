@@ -7,7 +7,10 @@ from dotenv import load_dotenv
 # bir footgun'du: kabukta eski bir OPENROUTER_API_KEY export'lu kalmışsa .env'e
 # yeni anahtar yazmak sessizce yok sayılıyordu (401 "User not found" kovaladık).
 # Coolify'da .env yok → orada zararsız (env var'lar kullanılır).
-load_dotenv(override=True)
+# TANIK_NO_DOTENV: ev-isci.py env'i KENDİSİ, doğru sırayla yükler (yerel .env →
+# Vercel env'i üstüne); burada tekrar yüklenirse yerel .env Vercel ayarlarını ezerdi.
+if not os.environ.get("TANIK_NO_DOTENV"):
+    load_dotenv(override=True)
 
 
 def _int(name: str, default: int) -> int:

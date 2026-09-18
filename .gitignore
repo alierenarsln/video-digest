@@ -10,3 +10,10 @@ __pycache__/
 /ders*.txt
 /*.mp4
 /*.wav
+# Vercel: CLI bagi + cekilen env'ler (DATABASE_URL, BLOB token, anahtarlar) — ASLA commit'leme
+.vercel/
+.env.vercel
+.env.local
+.env.*.local
+# ev-isci.py'nin yerel calisma dizini
+data-ev/

@@ -28,9 +28,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 def _columns(conn) -> set[str]:
     if IS_PG:
+        # current_schema() ŞART: yoksa başka bir şemadaki 'jobs' tablosunun
+        # sütunları da sayılır, eksik sütun "var" sanılıp ALTER atlanır ve
+        # sorgular "column ... does not exist" ile patlar (testte yakalandı).
         rows = conn.execute(
             "SELECT column_name AS name FROM information_schema.columns"
-            " WHERE table_name = 'jobs'"
+            " WHERE table_name = 'jobs' AND table_schema = current_schema()"
         )
     else:
         rows = conn.execute("PRAGMA table_info(jobs)")
@@ -49,14 +52,99 @@ def init() -> None:
         # referer: CDN'den (Bunny gibi) sunucu-tarafı indirmede gereken kaynak site.
         # audio_only: "sadece ses" seçildiyse 1 — video indirilmez, OCR atlanır.
         # transkript: '' /auto | groq | yerel — transkript kaynağı seçimi (video/ses).
+        # claimed_by: işi kapan ev işçisinin adı (Vercel modu; bkz. claim_next).
         for ad, tanim in (
             ("origin_url", "TEXT"), ("provider", "TEXT"),
             ("collection", "TEXT"), ("referer", "TEXT"), ("audio_only", "INTEGER"),
-            ("transkript", "TEXT"),
+            ("transkript", "TEXT"), ("claimed_by", "TEXT"),
         ):
             if ad not in var:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")
                 print(f"[db] goc: jobs.{ad} sutunu eklendi", flush=True)
+
+        # Süreçler arası küçük durum (ev işçisi kalp atışı vb.). Vercel'de bellek
+        # örnekler arası paylaşılmıyor; "ev bilgisayarı çevrimiçi" DB'den okunmalı.
+        conn.execute(
+            f"CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, t {FLOAT})"
+        )
+
+
+# --- ev işçisi: iş kapma (Vercel modu) ---------------------------------------
+# Kapılabilen durumlar: queued (yükleme/belge) ve waiting (link, eskiden agent'ın
+# indirmesini bekliyordu — ev işçisi kendisi indirir).
+_KAPILIR = ("queued", "waiting")
+
+
+def claim_next(worker_id: str) -> Optional[str]:
+    """Sıradaki işi ATOMİK olarak kap: running'e çek, kimin aldığını yaz, id dön.
+    İki işçi aynı işi alamaz (PG: FOR UPDATE SKIP LOCKED; SQLite: koşullu UPDATE)."""
+    now = time.time()
+    with _conn() as conn:
+        if IS_PG:
+            row = conn.execute(
+                "UPDATE jobs SET status='running', stage='claimed', claimed_by=?,"
+                " updated_at=? WHERE id = (SELECT id FROM jobs WHERE status IN (?, ?)"
+                " ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id",
+                (worker_id, now, *_KAPILIR),
+            ).fetchone()
+            return row["id"] if row else None
+        row = conn.execute(
+            "SELECT id FROM jobs WHERE status IN (?, ?) ORDER BY created_at LIMIT 1",
+            _KAPILIR,
+        ).fetchone()
+        if not row:
+            return None
+        cur = conn.execute(
+            "UPDATE jobs SET status='running', stage='claimed', claimed_by=?,"
+            " updated_at=? WHERE id=? AND status IN (?, ?)",
+            (worker_id, now, row["id"], *_KAPILIR),
+        )
+        return row["id"] if cur.rowcount == 1 else None
+
+
+def requeue_stale(lease_s: float) -> list[str]:
+    """Bir ev işçisinin kapıp lease_s boyunca ilerletmediği işleri sıraya geri koy
+    (işçi çöktü / PC kapandı). Yalnız claimed_by dolu işler — Coolify'ın kendi
+    süreç-içi worker'ının işlerine dokunulmaz."""
+    sinir = time.time() - lease_s
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM jobs WHERE status='running' AND claimed_by IS NOT NULL"
+            " AND updated_at < ?",
+            (sinir,),
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        for jid in ids:
+            conn.execute(
+                "UPDATE jobs SET status='queued', stage='queued', claimed_by=NULL,"
+                " updated_at=? WHERE id=? AND status='running'",
+                (time.time(), jid),
+            )
+    return ids
+
+
+def touch(job_id: str) -> None:
+    """Koşan işin kirasını tazele (ev işçisi: 'hâlâ bende, ölmedim')."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET updated_at=? WHERE id=? AND status='running'",
+            (time.time(), job_id),
+        )
+
+
+def kv_set(k: str, v: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO kv (k, v, t) VALUES (?, ?, ?) ON CONFLICT (k) DO UPDATE"
+            " SET v=excluded.v, t=excluded.t",
+            (k, v, time.time()),
+        )
+
+
+def kv_get(k: str) -> Optional[dict]:
+    with _conn() as conn:
+        row = conn.execute("SELECT v, t FROM kv WHERE k=?", (k,)).fetchone()
+    return dict(row) if row else None
 
 
 def create_job(
