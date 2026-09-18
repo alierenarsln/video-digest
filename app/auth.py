@@ -19,7 +19,7 @@ import secrets
 import time
 
 from .config import APP_PASSWORD, APP_USER
-from .dbconn import FLOAT, connect as _conn
+from .dbconn import FLOAT, connect as _conn, init_lock
 
 _ITER = 200_000
 # Karışan karakterler yok (0/O, 1/I/l) — kurtarma kodu elle yazılabilir olsun.
@@ -50,6 +50,9 @@ def init() -> str | None:
     döner (çağıran loga yazsın); sonraki açılışlarda None."""
     global _secret_cache
     with _conn() as c:
+        # Eşzamanlı ilk açılışta iki örnek de "satır yok" görüp id=1'i çift
+        # eklemesin; ikincisi kilidi bekler, sonra tohumu hazır bulur.
+        init_lock(c)
         c.execute(
             "CREATE TABLE IF NOT EXISTS auth ("
             " id INTEGER PRIMARY KEY CHECK (id=1),"

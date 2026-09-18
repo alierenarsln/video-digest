@@ -2,7 +2,7 @@ import json
 import time
 from typing import Any, Optional
 
-from .dbconn import FLOAT, IS_PG, connect as _conn
+from .dbconn import FLOAT, IS_PG, connect as _conn, init_lock
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS jobs (
@@ -39,6 +39,7 @@ def _columns(conn) -> set[str]:
 
 def init() -> None:
     with _conn() as conn:
+        init_lock(conn)
         conn.execute(SCHEMA)
 
         # CREATE TABLE IF NOT EXISTS mevcut tabloya yeni sütun EKLEMEZ; şema

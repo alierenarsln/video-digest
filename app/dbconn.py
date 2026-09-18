@@ -50,6 +50,21 @@ class _PgConn:
             self._c.close()
 
 
+_INIT_LOCK = 724_001  # rastgele sabit; yalnız şema kurulumunu sıraya sokar
+
+
+def init_lock(conn) -> None:
+    """Şema kurulum/tohum işlemini sıraya sok (yalnız Postgres).
+
+    Vercel boş veritabanında aynı anda birkaç örnek açabilir; hepsi birden
+    CREATE TABLE IF NOT EXISTS + auth tohumu koşarsa Postgres'te yarış olur (pg_type
+    benzersizlik ihlali / id=1 çift INSERT) ve kaybeden örnek 500 verir. Kilit
+    işlem (transaction) sonunda kendiliğinden bırakılır. SQLite tek süreç: gerekmez.
+    """
+    if IS_PG:
+        conn.execute("SELECT pg_advisory_xact_lock(%s)" % _INIT_LOCK)
+
+
 def connect():
     if IS_PG:
         return _PgConn()

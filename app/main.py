@@ -34,6 +34,7 @@ from .config import (
     GROQ_API_KEY,
     EXPOSED,
     IN_DOCKER,
+    ON_VERCEL,
     LLM_PROVIDER,
     OUT_DIR,
     OUTPUT_LANGUAGE,
@@ -145,15 +146,23 @@ async def lifespan(app: FastAPI):
     if ENABLE_FRAMES:
         ok, message = frames.check_ocr_langs()
         print(f"[ocr] {'OK' if ok else 'UYARI'}: {message}", flush=True)
-    # Referansı tut: asyncio görevlerine güçlü referans tutulmazsa çöp toplayıcı
-    # onları çalışırken toplayabiliyor.
-    gorevler = [
-        asyncio.create_task(worker.loop()),
-        asyncio.create_task(worker.kurtarici()),
-    ]
-    # Yeniden başlatmadan sağ çıkan işleri kuyruğa geri koy.
-    for job_id in db.pending_ids():
-        await worker.enqueue(job_id)
+    # Vercel'de süreç içi worker YOK: fonksiyon örnekleri istek bitince donar,
+    # birden çok örnek aynı anda açılır — hepsi kurtarıcıyla aynı işi kapardı.
+    # İş işleme orada ayrı bir kuyrukla yapılacak (taşıma Faz 3); o gelene kadar
+    # Vercel'e gelen işler "queued"da bekler, hiçbiri yarım işlenmez.
+    gorevler = []
+    if ON_VERCEL:
+        print("[worker] Vercel: surec ici worker kapali (is kuyrugu ayri)", flush=True)
+    else:
+        # Referansı tut: asyncio görevlerine güçlü referans tutulmazsa çöp
+        # toplayıcı onları çalışırken toplayabiliyor.
+        gorevler = [
+            asyncio.create_task(worker.loop()),
+            asyncio.create_task(worker.kurtarici()),
+        ]
+        # Yeniden başlatmadan sağ çıkan işleri kuyruğa geri koy.
+        for job_id in db.pending_ids():
+            await worker.enqueue(job_id)
     yield
     for g in gorevler:
         g.cancel()
