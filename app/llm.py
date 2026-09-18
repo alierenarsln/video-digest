@@ -20,6 +20,10 @@ import httpx
 
 from .config import (
     ANTHROPIC_API_KEY,
+    CEREBRAS_API_KEY,
+    CEREBRAS_BASE_URL,
+    CEREBRAS_MAX_OUTPUT,
+    CEREBRAS_MODEL,
     PROVIDER_WINDOWS,
     GEMINI_API_KEY,
     GEMINI_BASE_URL,
@@ -286,6 +290,64 @@ async def _openrouter_json(
     )
 
 
+async def _cerebras_json(
+    system: str, user: str, schema: dict[str, Any], effort: str, max_tokens: int
+) -> dict[str, Any]:
+    """Cerebras (OpenAI uyumlu) — katı JSON şeması destekli (ölçüldü: qwen-3.8-27b).
+
+    Kısıt dakikalık token kotası (150k): 429'da başlıktaki süre kadar beklenir.
+    Akıl yürüten model: düşünme token'ları max_tokens'tan yer; kesilirse bütçe
+    büyütülerek (kısılarak değil) yeniden denenir.
+    """
+    payload = {
+        "model": CEREBRAS_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "out", "schema": schema, "strict": True},
+        },
+        "max_tokens": min(max_tokens, CEREBRAS_MAX_OUTPUT),
+    }
+    last = ""
+    async with httpx.AsyncClient(timeout=300) as client:
+        for attempt in range(6):
+            resp = await client.post(
+                f"{CEREBRAS_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}"},
+                json=payload,
+            )
+            if resp.status_code == 429 or resp.status_code >= 500:
+                bekle = resp.headers.get("retry-after") or resp.headers.get(
+                    "x-ratelimit-reset-tokens-minute")
+                try:
+                    sn = float(bekle) if bekle else 2 ** attempt
+                except ValueError:
+                    sn = 2 ** attempt
+                last = f"{resp.status_code}: {resp.text[:200]}"
+                await asyncio.sleep(min(sn + 1, 65))
+                continue
+            if resp.status_code != 200:
+                raise LLMError(f"Cerebras {resp.status_code}: {resp.text[:400]}")
+            choice = resp.json()["choices"][0]
+            if choice.get("finish_reason") == "length":
+                payload["max_tokens"] = min(int(payload["max_tokens"] * 1.6), 32000)
+                last = f"kesildi, max_tokens={payload['max_tokens']}"
+                continue
+            content = (choice["message"].get("content") or "").strip()
+            if content:
+                try:
+                    return _loads(content)
+                except LLMError:
+                    last = f"bozuk JSON: {content[:120]}"
+            else:
+                last = "boş içerik"
+            await asyncio.sleep(1)
+    raise LLMError(f"Cerebras {CEREBRAS_MODEL}: {last}")
+
+
 def _gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """JSON Schema -> Gemini responseSchema (OpenAPI 3 alt kümesi).
 
@@ -410,6 +472,10 @@ async def complete_json(
                 raise
             print("[llm] OpenRouter 402 (bakiye) -> bu cagri Gemini'ye", flush=True)
             return await _gemini_json(system, user, schema, effort, max_tokens)
+    if aktif == "cerebras":
+        if not CEREBRAS_API_KEY:
+            raise LLMError("Sağlayıcı cerebras seçildi ama CEREBRAS_API_KEY boş.")
+        return await _cerebras_json(system, user, schema, effort, max_tokens)
     if aktif == "gemini":
         if not GEMINI_API_KEY:
             raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")
@@ -434,6 +500,8 @@ def _anahtar_istegi(ad: str) -> tuple[str, dict[str, str]] | None:
         return f"{GROQ_BASE_URL}/models", {"Authorization": f"Bearer {GROQ_API_KEY}"}
     if ad == "gemini" and GEMINI_API_KEY:
         return f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}", {"x-goog-api-key": GEMINI_API_KEY}
+    if ad == "cerebras" and CEREBRAS_API_KEY:
+        return f"{CEREBRAS_BASE_URL}/models", {"Authorization": f"Bearer {CEREBRAS_API_KEY}"}
     if ad == "anthropic" and ANTHROPIC_API_KEY:
         return "https://api.anthropic.com/v1/models", {
             "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"}
@@ -469,7 +537,26 @@ async def anahtar_kontrol(ad: str | None = None) -> None:
     if r.status_code == 200:
         if ad == "openrouter":
             await _openrouter_bakiye_kontrol()
+        if ad == "cerebras":
+            await _cerebras_kredi_kontrol()
         _ANAHTAR_OK[ad] = _time.time()
+
+
+async def _cerebras_kredi_kontrol() -> None:
+    """Model listesi kredisiz hesapta da 200 döner; asıl çağrı 402 alır (ölçüldü).
+    1 token'lık gerçek istekle ölç (maliyeti yok denecek kadar az)."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"{CEREBRAS_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}"},
+                json={"model": CEREBRAS_MODEL, "max_tokens": 1,
+                      "messages": [{"role": "user", "content": "ok"}]},
+            )
+    except httpx.HTTPError:
+        return
+    if r.status_code == 402:
+        raise LLMError("Cerebras kredisi yok (402) — cloud.cerebras.ai Billing'den eklenmeli.")
 
 
 # OpenRouter'da anahtarın "limit"i hesabın BAKİYESİ değil: anahtar limiti $5 ve
@@ -496,7 +583,7 @@ async def _openrouter_bakiye_kontrol() -> None:
 
 # Otomatik geçişte denenecek sıra: kalite/hız dengesi (config.LLM_PROVIDER ile aynı
 # mantık). Groq en sonda: ücretsiz ama dakikalık kota yüzünden özette yavaş.
-_YEDEK_SIRASI = ("anthropic", "gemini", "openrouter", "groq")
+_YEDEK_SIRASI = ("anthropic", "gemini", "openrouter", "cerebras", "groq")
 
 
 async def saglayici_sec(istenen: str | None = None) -> tuple[str, str | None]:

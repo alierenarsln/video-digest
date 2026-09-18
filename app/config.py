@@ -71,6 +71,15 @@ OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it
 # değerleri (16000) yine de kısıyoruz: gereksiz büyük bütçe kotayı hızlandırmıyor.
 OPENROUTER_MAX_OUTPUT = _int("OPENROUTER_MAX_OUTPUT", 8000)
 
+# Cerebras: OpenAI uyumlu, çok hızlı. ÖLÇÜLDÜ (2026-09-18, kredili hesap):
+#   qwen-3.8-27b : 450 istek/dk, 150k token/dk, tek istekte 88k token geçti (3 sn)
+#   gpt-oss-120b : 5 istek/dk, 30k token/dk → 60k'lık istek bile 429 (kullanışsız)
+# Kredisiz hesapta HER istek 402 "Payment required" (ölçüldü) — anahtar_kontrol yakalar.
+CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "").strip()
+CEREBRAS_MODEL = os.environ.get("CEREBRAS_MODEL", "qwen-3.8-27b").strip()
+CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+CEREBRAS_MAX_OUTPUT = _int("CEREBRAS_MAX_OUTPUT", 8000)
+
 # Özet/bölümleme/eleştirmen/onarım hangi sağlayıcıda koşsun?
 #   anthropic  : Claude — en iyi, 1M bağlam, ücretli
 #   groq       : gpt-oss-120b — ücretsiz. Sınır: 8000 token/dk. İstek sayısı
@@ -86,6 +95,7 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "").strip().lower() or (
     "anthropic" if ANTHROPIC_API_KEY
     else "gemini" if GEMINI_API_KEY
     else "openrouter" if OPENROUTER_API_KEY
+    else "cerebras" if CEREBRAS_API_KEY
     else "groq"
 )
 # Groq'ta KATI JSON şeması destekleyen model. Ölçüldü: gpt-oss-120b destekliyor,
@@ -123,6 +133,9 @@ PROVIDER_WINDOWS = {
     # Gemini 1M bağlam: OpenRouter gibi büyük pencere, ama günlük istek kotası
     # yok → hem büyük istek hem çok istek serbest.
     "gemini":     {"boundary": 120_000, "section": 40_000, "repair": 20_000},
+    # Cerebras qwen: 150k token/DAKİKA. Bölüm özetleri 4'er paralel gider →
+    # 4 × (25k + çıktı) kotaya sığsın. Bölümleme tek çağrı, 60k rahat.
+    "cerebras":   {"boundary": 60_000,  "section": 25_000, "repair": 10_000},
 }
 
 
@@ -132,6 +145,7 @@ def provider_available(name: str) -> bool:
         "openrouter": bool(OPENROUTER_API_KEY),
         "anthropic": bool(ANTHROPIC_API_KEY),
         "gemini": bool(GEMINI_API_KEY),
+        "cerebras": bool(CEREBRAS_API_KEY),
     }.get(name, False)
 
 
@@ -160,6 +174,12 @@ PROVIDER_INFO = {
         "model": GEMINI_MODEL,
         "artisi": "Native yapısal JSON (flake yok), iyi Türkçe, 1M bağlam, ~$3/ay.",
         "eksisi": "Ücretli (ama çok ucuz). Google AI Studio anahtarı gerekir.",
+    },
+    "cerebras": {
+        "ad": "Cerebras — en hızlı",
+        "model": CEREBRAS_MODEL,
+        "artisi": "Çok hızlı; dakikada 150k token, büyük bağlam.",
+        "eksisi": "Kredi harcar (hesaptaki kredi bitince durur).",
     },
 }
 
