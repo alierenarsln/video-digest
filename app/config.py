@@ -178,6 +178,9 @@ APP_USER = os.environ.get("APP_USER", "admin").strip()
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
 # Konteynerde çalışıyorsak dışarı açık sayılır → şifresiz açılışa izin verme.
 IN_DOCKER = _bool("IN_DOCKER", False)
+# Vercel de internete açık: VERCEL=1 çalışma anında platformca set edilir.
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+EXPOSED = IN_DOCKER or ON_VERCEL
 
 # --- Saklama (retention) ---
 # İş "done" olunca yüklenen KAYNAK dosyayı (video/ses/PDF) sil. Bu, diskin asıl
@@ -187,13 +190,30 @@ IN_DOCKER = _bool("IN_DOCKER", False)
 # Yeniden işlemek isteyen kapatır (KEEP source).
 DELETE_SOURCE_AFTER_DONE = _bool("DELETE_SOURCE_AFTER_DONE", True)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
+# Vercel'de (VERCEL=1) paket dizini salt-okunur; yazılabilir tek yer /tmp (geçici,
+# çağrı bitince gider — kalıcılık Postgres + Blob'da). Açılıştaki mkdir buradan
+# çöküyordu (500 FUNCTION_INVOCATION_FAILED).
+DATA_DIR = Path(
+    os.environ.get("DATA_DIR")
+    or ("/tmp/tanik-data" if os.environ.get("VERCEL") else "./data")
+).resolve()
 WORK_DIR = DATA_DIR / "work"
 OUT_DIR = DATA_DIR / "out"
 # Yüklenen dosyalar OUT_DIR'e KONULMAZ: orası /out altında servis ediliyor,
 # yüklediğiniz video internete açılırdı.
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "jobs.sqlite3"
+# Postgres (Vercel + Neon): tanımlıysa SQLite yerine kullanılır (bkz. dbconn.py).
+# Vercel'de kalıcı disk yok — SQLite dosyası her çağrıda kaybolurdu. Coolify'da
+# boş kalır ve volume'daki SQLite aynen çalışmaya devam eder.
+DATABASE_URL = (
+    os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or ""
+).strip()
+# Vercel Blob (bkz. storage.py): token varsa çıktılar Blob'a da yazılır, yoksa
+# yalnız yerel disk (Coolify). Depo PRIVATE kurulmalı — özetler herkese açık URL
+# almasın; sunucu token'la okuyup oturum korumalı /out yolundan verir.
+BLOB_READ_WRITE_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
+BLOB_ACCESS = os.environ.get("BLOB_ACCESS", "private").strip() or "private"
 
 # Uzun video parçalama: süre ~PART_SECONDS'ı belirgin aşarsa video part'lara
 # bölünüp her part AYRI özetlenir (derin part özeti + ayrı kütüphane girdisi),

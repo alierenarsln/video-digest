@@ -1,5 +1,6 @@
 import asyncio
 import io
+import mimetypes
 import re
 import secrets
 import shutil
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 
 import httpx
 
-from . import auth, db, llm, worker
+from . import auth, db, llm, storage, worker
 from .config import (
     ANTHROPIC_API_KEY,
     OPENROUTER_API_KEY,
@@ -31,6 +32,7 @@ from .config import (
     DEFAULT_CALLBACK_URL,
     ENABLE_FRAMES,
     GROQ_API_KEY,
+    EXPOSED,
     IN_DOCKER,
     LLM_PROVIDER,
     OUT_DIR,
@@ -120,7 +122,7 @@ async def lifespan(app: FastAPI):
     # Konteynerde çalışıyorsa dışarı açık kabul edilir: şifresiz açılmasına izin
     # vermiyoruz. Aksi halde linki bulan herkes iş atıp API kotasını yakabilir
     # ve anahtarlar sunucuda duruyor. Yerelde (127.0.0.1) şifre opsiyonel.
-    if IN_DOCKER and not APP_PASSWORD:
+    if EXPOSED and not APP_PASSWORD:
         raise RuntimeError(
             "APP_PASSWORD tanımlı değil. Konteynerde şifresiz çalıştırmak, servisi "
             "internete açıkken korumasız bırakır (API kotanız yakılabilir). "
@@ -173,6 +175,16 @@ async def koruma(request: Request, call_next):
     Middleware olarak yazıldı çünkü /out altındaki slayt görselleri StaticFiles
     ile servis ediliyor ve bir dependency onları kapsamazdı.
     """
+    # İnternete açık ortamda (Docker/Vercel) şifre yoksa HİÇBİR şey servis etme.
+    # Lifespan'deki kontrole güvenmiyoruz: Vercel'de lifespan'in koşacağı garanti
+    # değil; üstelik şifre boşken auth tablosu boş şifreyle tohumlanır ve Basic
+    # "admin:" ile girilebilirdi. Her istekte koşan tek yer burası.
+    if EXPOSED and not APP_PASSWORD and request.url.path != "/health":
+        return Response(
+            status_code=503,
+            content="APP_PASSWORD tanımlı değil — korumasız açılmıyor. "
+            "Barındırma ortamının env ayarlarına APP_PASSWORD ekleyin.",
+        )
     if auth.is_open() or request.url.path.startswith(_MUAF):
         return await call_next(request)
 
@@ -433,10 +445,10 @@ async def upload_job(
 def _job_id_of(name: str) -> str:
     """data/out içindeki bir girdinin hangi işe ait olduğunu çıkarır.
     Biçimler: <id>.md | <id>.transcript.txt | <id>.transcript.raw.txt | <id>_frames
+    | <id>_pages. (_pages eskiden tanınmıyordu: cleanup canlı PDF işlerinin sayfa
+    görsellerini öksüz sanıp silerdi, iş silinince de _pages diskte kalırdı.)
     """
-    if name.endswith("_frames"):
-        return name[: -len("_frames")]
-    return name.split(".")[0]
+    return storage.job_id_of(name)
 
 
 def _entries_of(job_id: str) -> list[Path]:
@@ -568,9 +580,10 @@ async def export_zip() -> Response:
         for j in db.list_jobs(2000):
             if j["status"] != "done":
                 continue
-            # list_jobs result_path döndürmüyor; markdown her zaman OUT_DIR/{id}.md.
-            p = OUT_DIR / f"{j['id']}.md"
-            if not p.exists():
+            # list_jobs result_path döndürmüyor; markdown her zaman OUT_DIR/{id}.md
+            # (yerelde yoksa Blob'dan).
+            md = storage.read_text(OUT_DIR / f"{j['id']}.md")
+            if md is None:
                 continue
             kol = _guvenli_ad(j.get("collection") or "atanmamis", 60)
             ad = _guvenli_ad(j.get("title") or j["id"])
@@ -578,10 +591,7 @@ async def export_zip() -> Response:
             if yol in seen:  # aynı ad → id ekle (çakışma)
                 yol = f"{kol}/{ad} ({j['id'][:6]}).md"
             seen.add(yol)
-            try:
-                z.writestr(yol, p.read_text(encoding="utf-8"))
-            except Exception:
-                continue
+            z.writestr(yol, md)
     buf.seek(0)
     return Response(
         buf.getvalue(), media_type="application/zip",
@@ -629,6 +639,11 @@ async def delete_job(job_id: str) -> dict:
         bayt += _size_of(p)
         silinen.append(p.name)
         _remove(p)
+
+    # Vercel: çıktıların kalıcı kopyası Blob'da (Coolify'da no-op).
+    blob_adet = await asyncio.to_thread(storage.delete_job, job_id)
+    if blob_adet:
+        silinen.append(f"blob:{blob_adet}")
 
     db.delete_job(job_id)
     return {"silinen": silinen, "bayt": bayt}
@@ -749,9 +764,11 @@ async def ask_job(job_id: str, req: Question) -> dict:
 
     meta = job.get("meta") or {}
     tpath = meta.get("transcript_path")
-    if not tpath or not Path(tpath).exists():
+    transcript = (
+        await asyncio.to_thread(storage.read_text, tpath) if tpath else None
+    )
+    if not transcript:
         raise HTTPException(409, "bu işin transkripti yok — soru sorulamıyor")
-    transcript = Path(tpath).read_text(encoding="utf-8")
 
     # Sağlayıcı iş başına seçilmişti (özetleme hangi modeli kullandıysa sohbet de
     # onu kullansın); windows() ve complete_json bunu ContextVar'dan okur.
@@ -789,14 +806,32 @@ async def get_markdown(job_id: str) -> str:
         raise HTTPException(404, "iş bulunamadı")
     if job["status"] != "done":
         raise HTTPException(409, f"iş henüz hazır değil (durum: {job['status']})")
-    with open(job["result_path"], encoding="utf-8") as fh:
-        return fh.read()
+    md = await asyncio.to_thread(storage.read_text, job["result_path"])
+    if md is None:
+        raise HTTPException(404, "özet dosyası bulunamadı")
+    return md
 
 
 # Özetteki slayt görüntüleri buradan servis ediliyor; markdown onlara göreli
-# yolla (<job_id>_frames/...) referans veriyor.
+# yolla (<job_id>_frames/...) referans veriyor. StaticFiles yerine rota: dosya
+# yerelde yoksa (Vercel — geçici disk) Blob'dan okunur. Oturum korumasının
+# arkasında (_MUAF'ta değil); Blob deposu private olduğu için başka yol da yok.
 ensure_dirs()
-app.mount("/out", StaticFiles(directory=OUT_DIR), name="out")
+
+
+@app.get("/out/{rel:path}", include_in_schema=False)
+async def out_file(rel: str) -> Response:
+    guvenli = storage.safe_rel(rel)
+    if guvenli is None:
+        raise HTTPException(404)
+    yerel = OUT_DIR / guvenli
+    if yerel.is_file():
+        return FileResponse(yerel)
+    data = await asyncio.to_thread(storage.read_rel, guvenli)
+    if data is None:
+        raise HTTPException(404)
+    tur = mimetypes.guess_type(guvenli)[0] or "application/octet-stream"
+    return Response(data, media_type=tur, headers={"Cache-Control": "private, max-age=86400"})
 
 # Tasarım sistemi (ds/tokens/*.css) buradan geliyor. index.html artık CSS'i
 # gömülü taşımıyor; token'lar zip'ten birebir kopyalandığı için ayrı dosyalar.

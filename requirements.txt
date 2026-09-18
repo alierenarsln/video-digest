@@ -24,3 +24,9 @@ pytesseract>=0.3.13
 # eksikse konteyner "No module named 'fitz'" ile açılışta çöker (canlıda oldu).
 pypdf>=6.0
 PyMuPDF>=1.28
+
+# Postgres (Vercel + Neon). DATABASE_URL yoksa kullanilmaz, SQLite devam eder.
+# [binary]: libpq tekerlekle gelir, sistemde postgres istemcisi gerekmez.
+psycopg[binary]>=3.2
+# Vercel Blob (storage.py). BLOB_READ_WRITE_TOKEN yoksa hic ice aktarilmaz.
+vercel>=0.11

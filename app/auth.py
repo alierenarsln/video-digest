@@ -16,10 +16,10 @@ import hashlib
 import hmac
 import json
 import secrets
-import sqlite3
 import time
 
-from .config import APP_PASSWORD, APP_USER, DB_PATH
+from .config import APP_PASSWORD, APP_USER
+from .dbconn import FLOAT, connect as _conn
 
 _ITER = 200_000
 # Karışan karakterler yok (0/O, 1/I/l) — kurtarma kodu elle yazılabilir olsun.
@@ -29,12 +29,6 @@ _REMEMBER_AGE = 30 * 86400   # beni hatırla: 30 gün
 _SESSION_AGE = 12 * 3600     # değilse: 12 saat (çerez de oturumluk)
 
 _secret_cache: str | None = None
-
-
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH, timeout=30)
-    c.row_factory = sqlite3.Row
-    return c
 
 
 def _hash(value: str, salt_hex: str) -> str:
@@ -68,7 +62,7 @@ def init() -> str | None:
         c.execute(
             "CREATE TABLE IF NOT EXISTS users ("
             " username TEXT PRIMARY KEY, pass_hash TEXT NOT NULL,"
-            " pass_salt TEXT NOT NULL, created_at REAL NOT NULL)"
+            f" pass_salt TEXT NOT NULL, created_at {FLOAT} NOT NULL)"
         )
         row = c.execute("SELECT secret FROM auth WHERE id=1").fetchone()
         if row:
@@ -139,8 +133,12 @@ def add_user(username: str, pw: str) -> bool:
     psalt = _salt()
     with _conn() as c:
         c.execute(
-            "INSERT OR REPLACE INTO users (username,pass_hash,pass_salt,created_at)"
-            " VALUES (?,?,?,?)",
+            # UPSERT: SQLite (3.24+) ve Postgres'te aynı sözdizimi. "INSERT OR
+            # REPLACE" yalnız SQLite'ta vardı.
+            "INSERT INTO users (username,pass_hash,pass_salt,created_at)"
+            " VALUES (?,?,?,?) ON CONFLICT (username) DO UPDATE SET"
+            " pass_hash=excluded.pass_hash, pass_salt=excluded.pass_salt,"
+            " created_at=excluded.created_at",
             (u, _hash(pw, psalt), psalt, time.time()),
         )
     return True
