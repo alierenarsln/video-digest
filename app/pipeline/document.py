@@ -124,9 +124,19 @@ def extract(pdf: Path, out_dir: Path, assets_rel: str, ilerleme=None,
         temiz = "\n".join(satir.strip() for satir in metin.splitlines() if satir.strip())
         karantina = conf is None or conf < OCR_CONF_ESIK
 
-        # Sayfa görüntüsünü sakla: karantinada kanıt, değilse kaynağa dönüş.
-        dst = out_dir / f"page_{i+1:04d}.jpg"
-        img.convert("RGB").save(dst, quality=80)
+        # Sayfa görüntüsünü YALNIZ karantinada sakla: özet onu kanıt olarak gösterir
+        # (render_document) — başka tüketicisi yok. Eskiden OCR'a düşen HER sayfa
+        # 300 DPI (~1,2 MB) kaydediliyordu: kullanılmayan 400 MB birikti, Vercel
+        # Blob'da her sayfa bir yazma işlemi (Hobby: 2.000/ay) demekti. Kanıt için
+        # 1600 px genişlik yeter; OCR yukarıda tam çözünürlükte zaten koştu.
+        img_rel = None
+        if karantina:
+            dst = out_dir / f"page_{i+1:04d}.jpg"
+            kanit = img.convert("RGB")
+            if kanit.width > 1600:
+                kanit = kanit.resize((1600, round(kanit.height * 1600 / kanit.width)))
+            kanit.save(dst, quality=75, optimize=True)
+            img_rel = f"{assets_rel}/{dst.name}"
 
         pages.append(
             Page(
@@ -136,7 +146,7 @@ def extract(pdf: Path, out_dir: Path, assets_rel: str, ilerleme=None,
                 conf=round(conf, 1) if conf is not None else None,
                 rotation=rotation,
                 quarantined=karantina,
-                img_rel=f"{assets_rel}/{dst.name}",
+                img_rel=img_rel,
                 word_ratio=round(oran, 3) if oran is not None else None,
             )
         )
