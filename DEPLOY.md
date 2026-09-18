@@ -81,3 +81,25 @@ silinir) ama slayt görselleri kalıcı (~35 KB/slayt, yoğun kursta ~3 MB/video
 ```
 
 n8n'den API'yi çağırırken Basic auth başlığı eklemeyi unutmayın (`APP_USER`/`APP_PASSWORD`).
+
+## 7. Vercel (taşıma sürüyor)
+
+Vercel projesi: `tanik` → repo `alierenarsln/video-digest`, branch `main`. Her push
+hem Coolify'ı hem Vercel'i günceller; geçiş bitene kadar ikisi aynı koddan beslenir.
+
+Kod iki modlu: aşağıdaki env'ler **varsa** Vercel modu, yoksa Coolify davranışı.
+
+| Değişken | Nereden | Not |
+|---|---|---|
+| `APP_PASSWORD` | elle | **Zorunlu.** Yoksa uygulama her şeye 503 döner (şifresiz açılmaz). |
+| `DATABASE_URL` | Storage → Neon | Postgres. Yoksa SQLite `/tmp`'de kalır → işler kaybolur, oturum düşer. |
+| `BLOB_READ_WRITE_TOKEN` | Storage → Blob | Depo **Private** olmalı (özetler herkese açık URL almasın). |
+| `GROQ_API_KEY`, `GROQ_API_KEY_2` | elle | Transkript; ikinci anahtar rate-limit tıkanmasını önler. |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `LLM_PROVIDER` | elle | Özet modeli. |
+| `USE_LOCAL_AGENT=true` | elle | Vercel'de zorunlu: medya ev agent'ında işlenir. |
+
+**Vercel'e KOYMAYIN:** `DATA_DIR` (kod Vercel'de `/tmp`'yi kendisi seçer), `IN_DOCKER`,
+`TESSERACT_CMD`, `TESSDATA_PREFIX`, `COOLIFY_*`, `SERVICE_*`.
+
+Sınırlar (tasarımı belirleyen): fonksiyon ≤300 sn, geçici disk ~500 MB, istek gövdesi
+≤4.5 MB, ffmpeg/Tesseract yok → video/ses işleme ev agent'ında, OCR görsel modelde.
