@@ -27,12 +27,13 @@ import httpx
 from ..config import (
     GEMINI_API_KEY,
     GEMINI_BASE_URL,
-    GEMINI_MODEL,
+    GEMINI_MODELS,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     VIDEO_HIZLI,
     VIDEO_HIZLI_MAX_DK,
 )
+from ..llm import google_istemci
 from .frames import Frame
 from .transcribe import Segment
 
@@ -144,14 +145,17 @@ async def _gemini_pencere(c: httpx.AsyncClient, url: str, bas: float, son: float
         },
     }
     son_hata = ""
-    for deneme in range(3):
+    # Model zinciri (bkz. config.GEMINI_MODELS): yok/aşırı yüklü/kotası dolu → sıradaki.
+    modeller = list(GEMINI_MODELS)
+    for deneme in range(len(modeller) + 2):
+        model = modeller[min(deneme, len(modeller) - 1)]
         r = await c.post(
-            f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+            f"{GEMINI_BASE_URL}/models/{model}:generateContent",
             headers={"x-goog-api-key": GEMINI_API_KEY}, json=govde,
         )
-        if r.status_code == 429 or r.status_code >= 500:
-            son_hata = f"Gemini {r.status_code}"
-            await asyncio.sleep(10 * (deneme + 1))
+        if r.status_code in (404, 429) or r.status_code >= 500:
+            son_hata = f"Gemini {model} {r.status_code}"
+            await asyncio.sleep(3)
             continue
         if r.status_code != 200:
             raise HizliYolYok(f"Gemini {r.status_code}: {r.text[:200]}")
@@ -176,7 +180,7 @@ async def _gemini(url: str, sure: float) -> tuple[list[Segment], list[Frame]]:
     else:
         pencereler = [(0.0, None)]
     sem = asyncio.Semaphore(PENCERE_ESZAMANLI)
-    async with httpx.AsyncClient(timeout=600) as c:
+    async with google_istemci(timeout=600) as c:
         async def bir(b, s):
             async with sem:
                 return b, s, await _gemini_pencere(c, url, b, s)

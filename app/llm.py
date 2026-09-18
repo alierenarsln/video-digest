@@ -24,11 +24,16 @@ from .config import (
     CEREBRAS_BASE_URL,
     CEREBRAS_MAX_OUTPUT,
     CEREBRAS_MODEL,
+    MISTRAL_API_KEY,
+    MISTRAL_BASE_URL,
+    MISTRAL_MAX_OUTPUT,
+    MISTRAL_MODEL,
     PROVIDER_WINDOWS,
     GEMINI_API_KEY,
     GEMINI_BASE_URL,
     GEMINI_MAX_OUTPUT,
     GEMINI_MODEL,
+    GEMINI_MODELS,
     GROQ_API_KEY,
     GROQ_BASE_URL,
     GROQ_CONCURRENCY,
@@ -290,17 +295,29 @@ async def _openrouter_json(
     )
 
 
-async def _cerebras_json(
-    system: str, user: str, schema: dict[str, Any], effort: str, max_tokens: int
-) -> dict[str, Any]:
-    """Cerebras (OpenAI uyumlu) — katı JSON şeması destekli (ölçüldü: qwen-3.8-27b).
+# OpenAI uyumlu, katı JSON şeması destekli sağlayıcılar: ad -> (taban, anahtar, model, çıktı)
+def _uyumlu(ad: str) -> tuple[str, str, str, int]:
+    if ad == "cerebras":
+        return CEREBRAS_BASE_URL, CEREBRAS_API_KEY, CEREBRAS_MODEL, CEREBRAS_MAX_OUTPUT
+    if ad == "mistral":
+        return MISTRAL_BASE_URL, MISTRAL_API_KEY, MISTRAL_MODEL, MISTRAL_MAX_OUTPUT
+    raise LLMError(f"Bilinmeyen sağlayıcı: {ad}")
 
-    Kısıt dakikalık token kotası (150k): 429'da başlıktaki süre kadar beklenir.
-    Akıl yürüten model: düşünme token'ları max_tokens'tan yer; kesilirse bütçe
-    büyütülerek (kısılarak değil) yeniden denenir.
+
+async def _uyumlu_json(
+    ad: str, system: str, user: str, schema: dict[str, Any], max_tokens: int
+) -> dict[str, Any]:
+    """Cerebras / Mistral (OpenAI uyumlu, katı JSON şeması — ikisi de ölçüldü).
+
+    Kısıt dakikalık kota: 429'da başlıktaki süre kadar beklenir. Akıl yürüten
+    modelde düşünme token'ları max_tokens'tan yer; kesilirse bütçe BÜYÜTÜLEREK
+    yeniden denenir.
     """
+    taban, anahtar, model, cikti = _uyumlu(ad)
+    if not anahtar:
+        raise LLMError(f"Sağlayıcı {ad} seçildi ama anahtarı boş.")
     payload = {
-        "model": CEREBRAS_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -309,14 +326,14 @@ async def _cerebras_json(
             "type": "json_schema",
             "json_schema": {"name": "out", "schema": schema, "strict": True},
         },
-        "max_tokens": min(max_tokens, CEREBRAS_MAX_OUTPUT),
+        "max_tokens": min(max_tokens, cikti),
     }
     last = ""
     async with httpx.AsyncClient(timeout=300) as client:
         for attempt in range(6):
             resp = await client.post(
-                f"{CEREBRAS_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}"},
+                f"{taban}/chat/completions",
+                headers={"Authorization": f"Bearer {anahtar}"},
                 json=payload,
             )
             if resp.status_code == 429 or resp.status_code >= 500:
@@ -330,7 +347,7 @@ async def _cerebras_json(
                 await asyncio.sleep(min(sn + 1, 65))
                 continue
             if resp.status_code != 200:
-                raise LLMError(f"Cerebras {resp.status_code}: {resp.text[:400]}")
+                raise LLMError(f"{ad} {resp.status_code}: {resp.text[:400]}")
             choice = resp.json()["choices"][0]
             if choice.get("finish_reason") == "length":
                 payload["max_tokens"] = min(int(payload["max_tokens"] * 1.6), 32000)
@@ -345,7 +362,7 @@ async def _cerebras_json(
             else:
                 last = "boş içerik"
             await asyncio.sleep(1)
-    raise LLMError(f"Cerebras {CEREBRAS_MODEL}: {last}")
+    raise LLMError(f"{ad} {model}: {last}")
 
 
 def _gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -388,44 +405,83 @@ async def _gemini_json(
             "maxOutputTokens": min(max_tokens, GEMINI_MAX_OUTPUT),
         },
     }
-    url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent"
-
-    last = ""
-    async with httpx.AsyncClient(timeout=600) as client:
-        for attempt in range(5):
-            resp = await client.post(
-                url, headers={"x-goog-api-key": GEMINI_API_KEY}, json=payload
-            )
-            if resp.status_code == 429:
-                await asyncio.sleep(min(_retry_after(resp, attempt) + 1, 65))
-                last = resp.text[:300]
+    global _gemini_iyi
+    # Son çalışan modelden başla (aşırı yüklü modeli her çağrıda yeniden deneme).
+    sira = [_gemini_iyi] + [m for m in GEMINI_MODELS if m != _gemini_iyi] if _gemini_iyi else list(GEMINI_MODELS)
+    hatalar = []
+    async with google_istemci(timeout=600) as client:
+        for model in sira:
+            try:
+                sonuc = await _gemini_model(client, model, payload)
+            except _SonrakiModel as exc:
+                hatalar.append(f"{model}: {exc}")
+                print(f"[llm] gemini {model} olmadi ({str(exc)[:90]}) -> siradaki model", flush=True)
                 continue
-            if resp.status_code != 200:
-                raise LLMError(f"Gemini {resp.status_code}: {resp.text[:400]}")
+            _gemini_iyi = model
+            return sonuc
+    raise LLMError("Gemini: hiçbir model yanıt vermedi — " + " | ".join(hatalar)[:600])
 
-            data = resp.json()
-            adaylar = data.get("candidates") or []
-            if not adaylar:
-                # promptFeedback.blockReason gelebilir (güvenlik) — retry çözmez.
-                geri = data.get("promptFeedback", {})
-                raise LLMError(f"Gemini aday döndürmedi: {str(geri)[:200]}")
-            aday = adaylar[0]
-            # maxOutputTokens'a takıldıysa çıktı yarım — retry ile büyümez.
-            if aday.get("finishReason") == "MAX_TOKENS":
-                raise LLMError("Gemini yanıtı kesildi — maxOutputTokens yetmedi.")
-            parts = (aday.get("content") or {}).get("parts") or []
-            metin = "".join(p.get("text", "") for p in parts).strip()
-            if metin:
-                try:
-                    return _loads(metin)
-                except LLMError:
-                    last = f"bozuk JSON: {metin[:120]}"
-            else:
-                last = "boş içerik"
-            await asyncio.sleep(1)
+
+class _SonrakiModel(Exception):
+    """Bu Gemini modeli şu an kullanılamaz (yok/aşırı yüklü/günlük kota) — sıradaki."""
+
+
+_gemini_iyi: str | None = None
+
+
+def google_istemci(**kw) -> httpx.AsyncClient:
+    """Google API'leri için istemci: bağlantı kurulamazsa httpx kendisi yeniden
+    dener. Bu bilgisayardan Google'a (Gemini, YouTube) yeni TLS bağlantılarının
+    çoğu 'SSL INVALID_SESSION_ID' ile düşüyor (ölçüldü: 12'de 11); sertifika
+    gerçek Google'ın, araya giren yok — ağ yolu. 12 tekrar 15'te 14'ü geçirdi."""
+    return httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(retries=12), **kw)
+
+
+async def _gemini_model(client: httpx.AsyncClient, model: str, payload: dict) -> dict[str, Any]:
+    url = f"{GEMINI_BASE_URL}/models/{model}:generateContent"
+    last = ""
+    for attempt in range(5):
+        resp = await client.post(url, headers={"x-goog-api-key": GEMINI_API_KEY}, json=payload)
+        if resp.status_code == 404:
+            raise _SonrakiModel("404 (model yok/kapalı)")
+        if resp.status_code == 503:
+            if attempt >= 1:
+                raise _SonrakiModel("503 yüksek talep")
+            await asyncio.sleep(3)
             continue
+        if resp.status_code == 429:
+            govde = resp.text
+            bekle = _retry_after(resp, attempt)
+            # Günlük kota dolduysa beklemek çözmez: başka model (kotası ayrı).
+            if "PerDay" in govde or "per day" in govde.lower() or bekle > 70:
+                raise _SonrakiModel("429 günlük kota")
+            await asyncio.sleep(min(bekle + 1, 65))
+            last = govde[:300]
+            continue
+        if resp.status_code != 200:
+            raise LLMError(f"Gemini {model} {resp.status_code}: {resp.text[:400]}")
+        data = resp.json()
+        adaylar = data.get("candidates") or []
+        if not adaylar:
+            # promptFeedback.blockReason gelebilir (güvenlik) — retry çözmez.
+            geri = data.get("promptFeedback", {})
+            raise LLMError(f"Gemini aday döndürmedi: {str(geri)[:200]}")
+        aday = adaylar[0]
+        # maxOutputTokens'a takıldıysa çıktı yarım — retry ile büyümez.
+        if aday.get("finishReason") == "MAX_TOKENS":
+            raise LLMError("Gemini yanıtı kesildi — maxOutputTokens yetmedi.")
+        parts = (aday.get("content") or {}).get("parts") or []
+        metin = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+        if metin:
+            try:
+                return _loads(metin)
+            except LLMError:
+                last = f"bozuk JSON: {metin[:120]}"
+        else:
+            last = "boş içerik"
+        await asyncio.sleep(1)
+    raise _SonrakiModel(last or "kota/flake")
 
-    raise LLMError(f"Gemini {GEMINI_MODEL}: {last or 'kota/flake'}.")
 
 
 def _loads(text: str) -> dict[str, Any]:
@@ -472,10 +528,8 @@ async def complete_json(
                 raise
             print("[llm] OpenRouter 402 (bakiye) -> bu cagri Gemini'ye", flush=True)
             return await _gemini_json(system, user, schema, effort, max_tokens)
-    if aktif == "cerebras":
-        if not CEREBRAS_API_KEY:
-            raise LLMError("Sağlayıcı cerebras seçildi ama CEREBRAS_API_KEY boş.")
-        return await _cerebras_json(system, user, schema, effort, max_tokens)
+    if aktif in ("cerebras", "mistral"):
+        return await _uyumlu_json(aktif, system, user, schema, max_tokens)
     if aktif == "gemini":
         if not GEMINI_API_KEY:
             raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")
@@ -502,6 +556,8 @@ def _anahtar_istegi(ad: str) -> tuple[str, dict[str, str]] | None:
         return f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}", {"x-goog-api-key": GEMINI_API_KEY}
     if ad == "cerebras" and CEREBRAS_API_KEY:
         return f"{CEREBRAS_BASE_URL}/models", {"Authorization": f"Bearer {CEREBRAS_API_KEY}"}
+    if ad == "mistral" and MISTRAL_API_KEY:
+        return f"{MISTRAL_BASE_URL}/models", {"Authorization": f"Bearer {MISTRAL_API_KEY}"}
     if ad == "anthropic" and ANTHROPIC_API_KEY:
         return "https://api.anthropic.com/v1/models", {
             "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"}
@@ -524,7 +580,8 @@ async def anahtar_kontrol(ad: str | None = None) -> None:
         )
     url, basliklar = istek
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        istemci = google_istemci(timeout=30) if ad == "gemini" else httpx.AsyncClient(timeout=15)
+        async with istemci as c:
             r = await c.get(url, headers=basliklar)
     except httpx.HTTPError:
         return  # ağ belirsizliği: engelleme, asıl çağrı kendi hatasını verir
@@ -537,26 +594,30 @@ async def anahtar_kontrol(ad: str | None = None) -> None:
     if r.status_code == 200:
         if ad == "openrouter":
             await _openrouter_bakiye_kontrol()
-        if ad == "cerebras":
-            await _cerebras_kredi_kontrol()
+        if ad in ("cerebras", "mistral"):
+            await _uyumlu_kullanim_kontrol(ad)
         _ANAHTAR_OK[ad] = _time.time()
 
 
-async def _cerebras_kredi_kontrol() -> None:
-    """Model listesi kredisiz hesapta da 200 döner; asıl çağrı 402 alır (ölçüldü).
-    1 token'lık gerçek istekle ölç (maliyeti yok denecek kadar az)."""
+async def _uyumlu_kullanim_kontrol(ad: str) -> None:
+    """Model listesi her durumda 200 döner; asıl çağrı reddedilebilir (ölçüldü):
+    Cerebras kredisizse 402; Mistral ücretsiz planı etkin değilse 429 ve dakikalık
+    sınır 0. 1 token'lık gerçek istekle ölç (maliyeti yok denecek kadar az)."""
+    taban, anahtar, model, _ = _uyumlu(ad)
     try:
         async with httpx.AsyncClient(timeout=20) as c:
             r = await c.post(
-                f"{CEREBRAS_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}"},
-                json={"model": CEREBRAS_MODEL, "max_tokens": 1,
+                f"{taban}/chat/completions",
+                headers={"Authorization": f"Bearer {anahtar}"},
+                json={"model": model, "max_tokens": 1,
                       "messages": [{"role": "user", "content": "ok"}]},
             )
     except httpx.HTTPError:
         return
     if r.status_code == 402:
-        raise LLMError("Cerebras kredisi yok (402) — cloud.cerebras.ai Billing'den eklenmeli.")
+        raise LLMError(f"{ad}: kredi yok (402) — sağlayıcının Billing sayfasından eklenmeli.")
+    if r.status_code == 429 and r.headers.get("x-ratelimit-limit-req-minute") == "0":
+        raise LLMError(f"{ad}: ücretsiz plan etkin değil (dakikalık sınır 0).")
 
 
 # OpenRouter'da anahtarın "limit"i hesabın BAKİYESİ değil: anahtar limiti $5 ve
@@ -581,9 +642,10 @@ async def _openrouter_bakiye_kontrol() -> None:
         )
 
 
-# Otomatik geçişte denenecek sıra: kalite/hız dengesi (config.LLM_PROVIDER ile aynı
-# mantık). Groq en sonda: ücretsiz ama dakikalık kota yüzünden özette yavaş.
-_YEDEK_SIRASI = ("anthropic", "gemini", "openrouter", "cerebras", "groq")
+# Otomatik geçişte denenecek sıra — ÖLÇÜLEN hıza göre (3 dk ders, özetleme adımı):
+# Cerebras 43 sn, Groq 110 sn, Gemini 116 sn (3.6-flash aşırı yüklüyken 3.5-flash).
+# Groq en sonda: ücretsiz ama dakikalık kotası küçük; uzun videoda sürünür.
+_YEDEK_SIRASI = ("anthropic", "openrouter", "cerebras", "gemini", "mistral", "groq")
 
 
 async def saglayici_sec(istenen: str | None = None) -> tuple[str, str | None]:

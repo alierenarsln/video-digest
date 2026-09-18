@@ -51,10 +51,25 @@ SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-opus-4-8")
 # responseSchema (yapısal JSON) + iyi Türkçe + ucuz. 2.5 Flash varsayılan;
 # Flash-Lite daha da ucuz ama biraz daha zayıf. Anahtar: Google AI Studio.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# Model ZİNCİRİ: biri 404 (ölçüldü: 2.5-flash "yeni kullanıcılara kapalı"), 503
+# (ölçüldü: 3.6/3.7-flash "yüksek talep") ya da günlük ücretsiz kotası dolu (429)
+# ise sıradakine geçilir. Her modelin ücretsiz kotası AYRI → zincir kapasiteyi de
+# artırır. Sıra: kalite > hız. GEMINI_MODEL (tek) verilirse zincirin başına girer.
+GEMINI_MODELS = [
+    m.strip() for m in (
+        os.environ.get("GEMINI_MODEL", "") + "," + os.environ.get(
+            "GEMINI_MODELS",
+            "gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash,"
+            "gemini-3.5-flash-lite,gemini-3.1-flash-lite",
+        )
+    ).split(",") if m.strip()
+]
+GEMINI_MODELS = list(dict.fromkeys(GEMINI_MODELS))  # tekrarları at, sırayı koru
+GEMINI_MODEL = GEMINI_MODELS[0]
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 # 1M bağlam → OpenRouter gibi büyük pencere; istek/kota derdi Groq kadar değil.
-GEMINI_MAX_OUTPUT = _int("GEMINI_MAX_OUTPUT", 8000)
+# Gemini 3 düşünen model: düşünme token'ları da bu bütçeden yer → 16k.
+GEMINI_MAX_OUTPUT = _int("GEMINI_MAX_OUTPUT", 16000)
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -80,6 +95,13 @@ CEREBRAS_MODEL = os.environ.get("CEREBRAS_MODEL", "qwen-3.8-27b").strip()
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_MAX_OUTPUT = _int("CEREBRAS_MAX_OUTPUT", 8000)
 
+# Mistral: OpenAI uyumlu, katı JSON şeması destekli. Ücretsiz "Experiment" planı
+# konsoldan ETKİNLEŞTİRİLMEDEN dakikalık istek sınırı 0 (ölçüldü: 429, limit 0).
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "").strip()
+MISTRAL_MODEL = os.environ.get("MISTRAL_MODEL", "mistral-medium-latest").strip()
+MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
+MISTRAL_MAX_OUTPUT = _int("MISTRAL_MAX_OUTPUT", 8000)
+
 # Özet/bölümleme/eleştirmen/onarım hangi sağlayıcıda koşsun?
 #   anthropic  : Claude — en iyi, 1M bağlam, ücretli
 #   groq       : gpt-oss-120b — ücretsiz. Sınır: 8000 token/dk. İstek sayısı
@@ -96,6 +118,7 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "").strip().lower() or (
     else "gemini" if GEMINI_API_KEY
     else "openrouter" if OPENROUTER_API_KEY
     else "cerebras" if CEREBRAS_API_KEY
+    else "mistral" if MISTRAL_API_KEY
     else "groq"
 )
 # Groq'ta KATI JSON şeması destekleyen model. Ölçüldü: gpt-oss-120b destekliyor,
@@ -136,6 +159,9 @@ PROVIDER_WINDOWS = {
     # Cerebras qwen: 150k token/DAKİKA. Bölüm özetleri 4'er paralel gider →
     # 4 × (25k + çıktı) kotaya sığsın. Bölümleme tek çağrı, 60k rahat.
     "cerebras":   {"boundary": 60_000,  "section": 25_000, "repair": 10_000},
+    # Mistral 128k bağlam; ücretsiz planın dakikalık sınırları yayınlanmıyor →
+    # Cerebras kadar ölçülü pencere (429'da llm beklemeyi zaten biliyor).
+    "mistral":    {"boundary": 60_000,  "section": 25_000, "repair": 10_000},
 }
 
 
@@ -146,6 +172,7 @@ def provider_available(name: str) -> bool:
         "anthropic": bool(ANTHROPIC_API_KEY),
         "gemini": bool(GEMINI_API_KEY),
         "cerebras": bool(CEREBRAS_API_KEY),
+        "mistral": bool(MISTRAL_API_KEY),
     }.get(name, False)
 
 
@@ -180,6 +207,12 @@ PROVIDER_INFO = {
         "model": CEREBRAS_MODEL,
         "artisi": "Çok hızlı; dakikada 150k token, büyük bağlam.",
         "eksisi": "Kredi harcar (hesaptaki kredi bitince durur).",
+    },
+    "mistral": {
+        "ad": "Mistral — ücretsiz yedek",
+        "model": MISTRAL_MODEL,
+        "artisi": "Ücretsiz plan, 128k bağlam, iyi Türkçe.",
+        "eksisi": "Ücretsiz planın hız sınırları düşük olabilir.",
     },
 }
 
@@ -320,9 +353,10 @@ MAX_FRAMES = _int("MAX_FRAMES", 80)
 
 # --- Hızlı yol: YouTube'u Gemini'ye linkiyle ver (bkz. pipeline/gemini_video.py) ---
 # İndirme + kare çıkarma + OCR + Whisper yerine tek model çağrısı. Başarısızsa iş
-# klasik yola döner (asla düşmez). Varsayılan KAPALI: kalite, gerçek derslerde
-# klasik yolla karşılaştırılıp onaylanınca açılacak (env VIDEO_HIZLI=1).
-VIDEO_HIZLI = _bool("VIDEO_HIZLI", False)
+# klasik yola döner (asla düşmez). ÖLÇÜLDÜ (2026-09-18, 15 dk konuşma): 90 sn,
+# indirme yok; transkript ELLE YAZILMIŞ altyazıyla %98 aynı, zaman damgası
+# sapması ort. 1,8 sn → varsayılan AÇIK. Bedeli: slayt GÖRÜNTÜSÜ yok (metni var).
+VIDEO_HIZLI = _bool("VIDEO_HIZLI", True)
 VIDEO_HIZLI_MAX_DK = _int("VIDEO_HIZLI_MAX_DK", 180)
 
 
