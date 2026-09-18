@@ -740,6 +740,10 @@ def _hata_acikla(exc: Exception) -> str:
              "videolarda daha olası. Öneri: 'tekrar dene' (çoğu zaman geçer); video "
              "30dk+ ise part'lara bölünür, yalnız hatalı part'ı yeniden dene; ya da "
              "yerel transkript (yerel-transkript.py) ile Groq'u tümden atla.")
+    elif ("401" in dl or "user not found" in dl or "invalid api key" in dl
+          or "unauthorized" in dl) and "anahtarı geçersiz" not in dl:
+        a = ("Özet sağlayıcısının API anahtarı geçersiz. Ev bilgisayarındaki .env'de "
+             "düzelt ya da işi başka bir sağlayıcıyla tekrar gönder.")
     elif "429" in dl or "rate limit" in dl or "kota" in dl or "quota" in dl or "too many" in dl:
         a = ("Sağlayıcı kotası doldu (dakikalık/günlük istek ya da token sınırı). "
              "Öneri: birkaç dakika bekleyip tekrar dene; ya da arayüzden farklı "

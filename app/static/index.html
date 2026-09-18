@@ -338,7 +338,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
   <button class="marka" id="anaSayfa" type="button" aria-label="Ana sayfa">Tanık<b>.</b></button>
   <div class="sag">
     <span class="saglik" id="saglik"></span>
-    <span class="saglik" id="agentDurum" style="display:none" title="Ev indiricisi (YouTube linkleri için)"></span>
+    <span class="saglik" id="agentDurum" style="display:none" title="İşleri ev bilgisayarı işler"></span>
     <span class="kullanim" id="kullanim" style="display:none"></span>
     <button class="btn sessiz" id="kitaplikBtn" type="button">kitaplık</button>
     <button class="btn sessiz" id="tema" type="button" aria-label="Tema değiştir">tema</button>
@@ -351,8 +351,8 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <div class="eyebrow yanBaslik">kaynaklar</div>
     <div id="liste"></div>
     <div style="margin-top:var(--space-5)">
-      <button class="btn sessiz" id="temizlik" type="button" style="width:100%">öksüz dosyaları tara</button>
-      <div class="ipucu" id="bakimSonuc" style="margin-top:6px"></div>
+      <button class="btn sessiz" id="temizlik" type="button" style="display:none">öksüz dosyaları tara</button>
+      <div class="ipucu" id="bakimSonuc" style="display:none"></div>
       <button class="btn sessiz" id="kullaniciAc" type="button" style="width:100%;margin-top:8px">kullanıcılar</button>
       <div id="kullaniciPanel" style="display:none;margin-top:8px">
         <div id="kullaniciListe" class="ipucu" style="margin-bottom:6px"></div>
@@ -369,10 +369,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
   <main class="ana">
     <!-- GİRİŞ -->
     <section class="kolon" id="giris">
-      <h1 style="font-size:var(--fs-display);max-width:16ch">Gezilemeyen bir kaynak. Dürüst bir özet.</h1>
-      <p class="ipucu" style="margin:var(--space-4) 0 var(--space-6);font-size:var(--fs-body)">
-        Video, ses, PDF ya da bağlantı ver — okunabilir bir özet çıkarır.
-      </p>
+      <h1 style="font-size:var(--fs-h1);margin-bottom:var(--space-5)">Yeni özet</h1>
 
       <div class="kart">
         <div class="sekmeler" role="tablist">
@@ -407,11 +404,11 @@ input[type=text]::placeholder { color: var(--text-faint); }
           <div id="icerikBlok">
             <label class="eyebrow" for="icerikTur">içerik</label>
             <select id="icerikTur" style="margin-top:6px">
-              <option value="0">Video — ekrandaki slayt/kod da okunur</option>
-              <option value="1">Sadece ses — daha hızlı, görüntü yok</option>
+              <option value="0">Video (slaytlar dahil)</option>
+              <option value="1">Sadece ses (daha hızlı)</option>
             </select>
           </div>
-          <div id="transkriptBlok">
+          <div id="transkriptBlok" style="display:none">
             <label class="eyebrow" for="transkriptKaynak" style="display:block;margin-top:var(--space-4)">transkript</label>
             <select id="transkriptKaynak" style="margin-top:6px">
               <option value="">Sunucu (Groq) — hızlı, kısa videolar için</option>
@@ -436,8 +433,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
       <!-- KAYNAĞA SOR — cevap yalnızca transkriptten; kaynakta yoksa "bulamadım" -->
       <div class="sor" id="sor" style="display:none">
         <div class="eyebrow">kaynağa sor</div>
-        <p class="ipucu sorNot">Cevap yalnızca bu kaynağın transkriptinden gelir.
-          Kaynakta yoksa uydurmaz — "bunu kaynakta bulamadım" der.</p>
+        <p class="ipucu sorNot">Cevaplar yalnız bu kaynaktan.</p>
         <div id="sorAkis"></div>
         <form id="sorForm" class="sorForm" autocomplete="off">
           <input id="sorGiris" type="text"
@@ -450,8 +446,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <!-- KİTAPLIK -->
     <section id="kitaplik" style="display:none">
       <h1 style="font-size:var(--fs-h1)">Kitaplık</h1>
-      <p class="ipucu" style="margin:var(--space-2) 0 var(--space-6)">
-        Üretilen her şey, LLM'in konuya göre ayırdığı çalışmalarda.</p>
+      <div style="height:var(--space-5)"></div>
       <div id="kitaplikIcerik"></div>
     </section>
   </main>
@@ -462,16 +457,16 @@ input[type=text]::placeholder { color: var(--text-faint); }
 // koşmaz). İkisini ayrı satır göstermek "✓ Altyazı kullanılıyor" gibi yanlış bir
 // onay üretiyordu; tek adımda birleştirildi. repair de atlanabilir — bu yüzden
 // tamamlanmış adımlar sırayla değil, yalnızca AKTİF olan vurgulanarak gösteriliyor.
+// Sıra worker'daki GERÇEK sıra (eskiden slayt adımı transkriptten sonra yazılıydı,
+// işaretler karışıyordu). İlgili teknik adımlar tek sade adımda birleşik.
 const ASAMALAR = [
-  ["awaiting_download",         "Ev makinesinde indirilmeyi bekliyor"],
-  ["fetch",                     "Video indiriliyor"],
-  ["pages",                     "Sayfalar okunuyor (metin katmanı / OCR)"],
-  ["subtitles|transcribe",      "Transkript hazırlanıyor"],
-  ["frames",                    "Slaytlar okunuyor (OCR)"],
-  ["repair",                    "Transkript onarılıyor"],
-  ["segment",                   "Konulara bölünüyor"],
-  ["summarize",                 "Özetleniyor + eleştirmen"],
-  ["render",                    "Markdown yazılıyor"],
+  ["queued|waiting|awaiting_download|claimed", "Sırada"],
+  ["fetch",                          "İndiriliyor"],
+  ["pages",                          "Sayfalar okunuyor"],
+  ["frames",                         "Slaytlar okunuyor"],
+  ["subtitles|transcribe|repair",    "Yazıya dökülüyor"],
+  ["segment|summarize",              "Özetleniyor"],
+  ["render",                         "Kaydediliyor"],
 ];
 const asamaAdi = (stage) => {
   // "pages:45/200" gibi ilerlemeli aşama: taban ("pages") roadmap'e eşlensin,
@@ -481,6 +476,8 @@ const asamaAdi = (stage) => {
   const ad = bulunan ? bulunan[1] : (stage || "");
   return detay ? `${ad} — ${detay} sayfa` : ad;
 };
+
+const KISA_AD = { groq: "Groq", openrouter: "OpenRouter", gemini: "Gemini", anthropic: "Claude" };
 
 let secili = null, zamanlayici = null, sonListe = null;
 
@@ -635,7 +632,7 @@ async function saglayicilar() {
     return;
   }
   sel.innerHTML = ps.map((p) =>
-    `<option value="${esc(p.id)}" ${p.varsayilan ? "selected" : ""}>${esc(p.ad)} · ${esc(p.model)}</option>`
+    `<option value="${esc(p.id)}" ${p.varsayilan ? "selected" : ""}>${esc(KISA_AD[p.id] || p.id)}</option>`
   ).join("");
   // Sağlayıcı jargonu (kota/bağlam açıklamaları) kaldırıldı — dropdown zaten adı
   // söylüyor; ayrıntıyı merak eden seçeneklerin üstüne gelince (title) görür.
@@ -675,12 +672,9 @@ function gorunenAd(j) {
 async function saglik() {
   try {
     const h = await (await fetch("/health")).json();
-    const iyi = h.groq_key && h.ocr_ok;
-    let t = `<span class="nokta" style="background:${iyi ? "var(--sig-verified)" : "var(--sig-uncertain)"}"></span>` +
-            `${esc(h.llm_provider || "")} · ${esc(h.output_language || "")}`;
-    if (!h.groq_key) t += " · GROQ_API_KEY yok";
-    else if (!h.ocr_ok) t += " · OCR dili eksik";
-    $("#saglik").innerHTML = t;
+    // Sağlayıcı/dil/OCR ayrıntısı kullanıcıya gürültüydü (OCR uyarısı Vercel'de
+    // yanıltıcıydı: OCR ev bilgisayarında koşuyor). Yalnız ulaşılamazsa uyar.
+    $("#saglik").innerHTML = h && h.ok !== false ? "" : "sunucu sorunu";
   } catch { $("#saglik").textContent = "sunucuya ulaşılamıyor"; }
 }
 
@@ -695,7 +689,7 @@ async function agentDurum() {
     if (!s.ever_seen) { el.style.display = "none"; return; }
     el.style.display = "inline-flex";
     const renk = s.online ? "var(--sig-verified)" : "var(--sig-uncertain)";
-    const metin = s.online ? "ev bilgisayarı: çevrimiçi" : "ev bilgisayarı: çevrimdışı → PC'yi aç";
+    const metin = s.online ? "ev PC açık" : "ev PC kapalı";
     el.innerHTML = `<span class="nokta" style="background:${renk}"></span>${esc(metin)}`;
   } catch { /* durum alınamadıysa göstergeyi olduğu gibi bırak */ }
 }
@@ -725,8 +719,7 @@ function isHtml(j) {
   const ad = gorunenAd(j);
   return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
-    <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}${
-      j.provider ? ` · ${esc(j.provider)}` : ""}</div>
+    <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}</div>
   </button>`;
 }
 
@@ -771,8 +764,15 @@ async function listele() {
 }
 
 function asamaHtml(job) {
-  const i = ASAMALAR.findIndex(([k]) => k.split("|").includes(String(job.stage || "").split(":")[0]));
-  return ASAMALAR.map(([, ad], n) => {
+  // Yalnız bu işe uyan adımlar: belgede indirme/slayt/yazıya dökme yok; videoda
+  // sayfa yok; "sadece ses"te slayt yok.
+  const src = String(job.source || "").toLowerCase();
+  const belge = /\.(pdf|md|markdown|txt)$/.test(src) || String(job.stage || "").startsWith("pages");
+  const gizle = belge ? ["fetch", "frames", "subtitles|transcribe|repair"]
+    : job.audio_only ? ["pages", "frames"] : ["pages"];
+  const adimlar = ASAMALAR.filter(([k]) => !gizle.includes(k));
+  const i = adimlar.findIndex(([k]) => k.split("|").includes(String(job.stage || "").split(":")[0]));
+  return adimlar.map(([, ad], n) => {
     const sinif = n < i ? "bitti" : n === i ? "aktif" : "bekleyen";
     const im = n < i ? "✓" : n === i ? "●" : "○";
     return `<div class="asama ${sinif}"><span class="im">${im}</span>${esc(ad)}</div>`;
@@ -1270,10 +1270,10 @@ async function ciz() {
 
   if (j.status === "error" || j.status === "cancelled") {
     const iptal = j.status === "cancelled";
-    $("#durum").innerHTML = `<h1>${iptal ? "İptal edildi" : "Okuyamadım"}</h1>
+    $("#durum").innerHTML = `<h1>${iptal ? "İptal edildi" : "İşlenemedi"}</h1>
       <p class="ipucu" style="margin:var(--space-3) 0">${iptal
-        ? "Bu işi sen durdurdun. İstersen yeniden dene ya da sil."
-        : "İş yarıda kaldı. Sebebi aşağıda — kısaltılmadı, olduğu gibi:"}</p>
+        ? "Durduruldu. Yeniden deneyebilir ya da silebilirsin."
+        : "Sebep:"}</p>
       ${!iptal ? `<div class="hata">${esc(j.error || "bilinmeyen")}</div>` : ""}
       <div class="satir" style="margin-top:var(--space-5)">
         <button class="btn" id="tekrarDene" type="button">tekrar dene</button>
@@ -1291,16 +1291,10 @@ async function ciz() {
 
   if (j.status !== "done") {
     let not = "";
-    if (j.stage === "awaiting_download") {
-      // Bu "takıldı" değil, tasarım: sunucu YouTube'a erişemiyor, ev makinesi
-      // indirecek. Söylemezsek kullanıcı bozuk sanır.
-      not = `<div class="karantina" style="border-left-color:var(--sig-uncertain)">
-        <div>
-          <div class="etiket" style="color:var(--sig-uncertain)">bekliyor</div>
-          <p class="ipucu" style="margin-top:5px">Sunucu YouTube'a erişemiyor (veri merkezi
-          IP'leri engelli). Ev makinendeki <code>agent.ps1</code> bu bağlantıyı indirip
-          yükleyecek — çalışmıyorsa başlat. İş kaybolmaz, sırada bekler.</p>
-        </div></div>`;
+    // İşleri ev bilgisayarı işliyor: kapalıysa iş sırada bekler (kaybolmaz).
+    if (!agentAcik && ["queued", "waiting"].includes(j.status)) {
+      not = `<p class="ipucu" style="margin-top:var(--space-4);color:var(--sig-uncertain)">
+        Ev bilgisayarı kapalı — açılınca işlenir.</p>`;
     }
     // Geçen süre (canlı) + split işlerde "parça K/N"den tahmini kalan.
     const gecen = j.created_at ? Math.max(0, Date.now() / 1000 - j.created_at) : 0;
@@ -1314,7 +1308,7 @@ async function ciz() {
     }
     $("#durum").innerHTML = `<h1>${esc(j.title || "İşleniyor…")}</h1>
       <p class="ipucu" style="margin:var(--space-3) 0 var(--space-2)">
-        Kapatmana gerek yok — iş sunucuda devam eder.</p>
+        Sayfayı kapatabilirsin; iş devam eder.</p>
       <p class="ipucu" style="margin:0 0 var(--space-5);font-family:var(--font-mono)">${esc(sureBilgi)}</p>
       <div class="kart">${asamaHtml(j)}</div>${not}
       <div class="satir" style="margin-top:var(--space-4)">
@@ -1513,9 +1507,10 @@ function formSecenekleriGuncelle() {
   // 1) belge → video-only bloklar gizli
   const goster = belge ? "none" : "block";
   if ($("#icerikBlok")) $("#icerikBlok").style.display = goster;
-  if ($("#transkriptBlok")) $("#transkriptBlok").style.display = goster;
+  // Transkript seçimi yeni düzende anlamsız (her iş ev bilgisayarında işleniyor).
+  if ($("#transkriptBlok")) $("#transkriptBlok").style.display = "none";
   // 2) ipucu (her zaman güncel)
-  if ($("#ipucu") && oneri.ipucu) $("#ipucu").textContent = oneri.ipucu;
+  // Türe göre ipuçları gürültüydü; öneriler (model/içerik/referer) yine sessizce uygulanır.
   // 3) önerileri YALNIZCA tür değişince uygula (kullanıcının elle seçimini ezme)
   if (tip !== _sonOneriTip) {
     _sonOneriTip = tip;
@@ -1756,7 +1751,7 @@ if ($("#kullaniciEkle")) $("#kullaniciEkle").onclick = async () => {
   }
 };
 
-$("#ipucu").textContent = "Uzun videolar birkaç dakika sürebilir.";
+$("#ipucu").textContent = "";
 
 saglayicilar();
 saglik();
