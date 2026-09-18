@@ -245,6 +245,11 @@ PART_PAGES = _int("PART_PAGES", 15)
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)
 TRANSCRIBE_LANGUAGE = os.environ.get("TRANSCRIBE_LANGUAGE", "").strip() or None
+# Groq düşünce (kota/5xx/anahtar) ev bilgisayarında faster-whisper'a geç. Model
+# "small": bu PC'de önbellekte hazır, CPU'da makul hız; Türkçe için "medium" daha
+# iyi ama ~3 kat yavaş (env ile değiştirilebilir).
+LOCAL_WHISPER = _bool("LOCAL_WHISPER", True)
+LOCAL_WHISPER_MODEL = os.environ.get("LOCAL_WHISPER_MODEL", "small").strip() or "small"
 DEFAULT_CALLBACK_URL = os.environ.get("DEFAULT_CALLBACK_URL", "").strip() or None
 
 # --- Altyazı (varsa Whisper'a hiç gitmeden bedava transkript) ---
@@ -292,6 +297,13 @@ TESSERACT_CMD = os.environ.get("TESSERACT_CMD", "").strip() or None
 # Bu kadar bile metni olmayan kare slayt değildir (kamera görüntüsü) — atılır.
 MIN_OCR_CHARS = _int("MIN_OCR_CHARS", 15)
 MAX_FRAMES = _int("MAX_FRAMES", 80)
+
+# --- Hızlı yol: YouTube'u Gemini'ye linkiyle ver (bkz. pipeline/gemini_video.py) ---
+# İndirme + kare çıkarma + OCR + Whisper yerine tek model çağrısı. Başarısızsa iş
+# klasik yola döner (asla düşmez). Varsayılan KAPALI: kalite, gerçek derslerde
+# klasik yolla karşılaştırılıp onaylanınca açılacak (env VIDEO_HIZLI=1).
+VIDEO_HIZLI = _bool("VIDEO_HIZLI", False)
+VIDEO_HIZLI_MAX_DK = _int("VIDEO_HIZLI_MAX_DK", 180)
 
 
 def ensure_dirs() -> None:

@@ -326,6 +326,69 @@ input[type=text]::placeholder { color: var(--text-faint); }
   padding: 12px 14px; border-radius: var(--radius-1); font-family: var(--font-mono);
   font-size: var(--fs-sm); color: var(--text-strong); white-space: pre-wrap; }
 .bos { color: var(--text-faint); font-family: var(--font-serif); font-size: 18px; padding: var(--space-7) 0; }
+/* tek kutu: link ya da dosya (sürükle-bırak) */
+.birKutu { position: relative; }
+.birKutu .satir input { flex: 1; min-width: 0; }
+.birKutu.surukle { border-color: var(--accent); border-style: dashed; background: var(--surface-sunken); }
+.birakIpucu { display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
+  font-family: var(--font-serif); font-size: 18px; color: var(--accent); pointer-events: none;
+  background: var(--surface-card); border-radius: inherit; }
+.birKutu.surukle .birakIpucu { display: flex; }
+.secilen { display: flex; align-items: center; gap: 10px; margin-top: var(--space-3);
+  font-size: var(--fs-sm); color: var(--text-strong); }
+.secilen #yukleMetin::before { content: "📄 "; }
+.ayarSatir { display: flex; gap: var(--space-4); margin-top: var(--space-3); flex-wrap: wrap; }
+.ayarSatir > div { flex: 1; min-width: 160px; }
+.ayarSatir select { margin-top: 6px; width: 100%; }
+.yerImi { margin-top: var(--space-4); }
+.yerImiBtn { display: inline-block; padding: 2px 10px; border: 1px dashed var(--accent);
+  border-radius: 999px; color: var(--accent); text-decoration: none; cursor: grab;
+  font-weight: var(--fw-medium); }
+/* canlı önizleme (iş sürerken hazır olanlar) */
+.canli { margin-top: var(--space-6); }
+.canli h3 { font-size: var(--fs-h3); margin: var(--space-5) 0 var(--space-2); }
+.canli .cBolum p, .canli .cBolum li { font-family: var(--font-serif); font-size: 15px; line-height: 1.55; color: var(--text-body); }
+.canli .cBolum ul { padding-left: 20px; margin: 6px 0; }
+.canli details { margin-top: var(--space-4); }
+.canli summary { cursor: pointer; color: var(--text-muted); font-size: var(--fs-sm); }
+.canli pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5;
+  max-height: 420px; overflow: auto; background: var(--surface-sunken); padding: 12px;
+  border-radius: var(--radius-1); border: 1px solid var(--border-hair); }
+.asamaCubuk { height: 4px; background: var(--surface-inset); border-radius: 999px; overflow: hidden;
+  margin: 2px 0 0 26px; max-width: 260px; }
+.asamaCubuk > i { display: block; height: 100%; background: var(--accent);
+  transition: width var(--dur-2) var(--ease-standard); }
+/* çalışma: test + bilgi kartları */
+.calisma { margin-top: var(--space-7); padding-top: var(--space-6); border-top: 1px solid var(--border-hair); }
+.calisma .sekmeler { margin: var(--space-3) 0 var(--space-4); }
+.soruK { border: 1px solid var(--border-hair); border-radius: var(--radius-2); padding: 14px 16px;
+  margin-bottom: var(--space-3); background: var(--surface-card); }
+.soruK .s { font-family: var(--font-serif); font-size: 16px; color: var(--text-strong); margin-bottom: 10px; }
+.soruK .sec { display: block; width: 100%; text-align: left; font: inherit; font-size: var(--fs-sm);
+  padding: 8px 11px; margin: 5px 0; border: 1px solid var(--border-strong); border-radius: var(--radius-1);
+  background: transparent; color: var(--text-body); cursor: pointer; }
+.soruK .sec:hover:not(:disabled) { border-color: var(--accent); }
+.soruK .sec:disabled { cursor: default; }
+.soruK .sec.dogru { border-color: var(--sig-verified); background: var(--sig-verified-bg); color: var(--text-strong); }
+.soruK .sec.yanlis { border-color: var(--accent); background: var(--accent-tint); }
+.soruK .acik { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 8px; }
+.skor { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
+.kartlar { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.flash { width: 100%; max-width: 560px; min-height: 180px; perspective: 1200px; cursor: pointer;
+  border: 0; padding: 0; background: none; }
+.flash .ic { position: relative; width: 100%; min-height: 180px; transition: transform .45s var(--ease-standard);
+  transform-style: preserve-3d; }
+.flash.cevrik .ic { transform: rotateY(180deg); }
+.flash .yuz { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 20px 24px; backface-visibility: hidden; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2); background: var(--surface-card); font-family: var(--font-serif);
+  font-size: 18px; color: var(--text-strong); text-align: center; line-height: 1.45; overflow: auto; }
+.flash .arka { transform: rotateY(180deg); font-size: 16px; color: var(--text-body); background: var(--surface-sunken); }
+.kartNav { display: flex; align-items: center; gap: var(--space-3); }
+@media (max-width: 640px) {
+  .birKutu .satir { flex-wrap: wrap; }
+  .birKutu .satir input { flex-basis: 100%; }
+}
 .ilerleme { height: 3px; background: var(--surface-inset); border-radius: 999px;
   overflow: hidden; margin-top: var(--space-3); display: none; }
 .ilerleme > div { height: 100%; background: var(--accent); width: 0;
@@ -371,64 +434,65 @@ input[type=text]::placeholder { color: var(--text-faint); }
     <section class="kolon" id="giris">
       <h1 style="font-size:var(--fs-h1);margin-bottom:var(--space-5)">Yeni özet</h1>
 
-      <div class="kart">
-        <div class="sekmeler" role="tablist">
-          <button class="sekme" id="sekLink" role="tab" aria-selected="true" type="button">Bağlantı</button>
-          <button class="sekme" id="sekDosya" role="tab" aria-selected="false" type="button">Dosya</button>
+      <!-- TEK KUTU: link yapıştır ya da dosyayı bırak/seç — tür kendiliğinden anlaşılır. -->
+      <div class="kart birKutu" id="birKutu">
+        <div class="satir">
+          <input type="text" id="kaynak" placeholder="Link yapıştır ya da dosyayı buraya bırak"
+            aria-label="Link ya da dosya" autocomplete="off">
+          <button class="btn sessiz" id="dosyaSec" type="button" title="Video, ses, PDF ya da metin dosyası seç">Dosya</button>
+          <button class="btn" id="btn" type="button">İşle</button>
         </div>
-
-        <div id="panelLink">
-          <div class="satir">
-            <input type="text" id="kaynak" placeholder="YouTube ya da video bağlantısı yapıştır" aria-label="Bağlantı">
-            <button class="btn" id="btn" type="button">İşle</button>
-          </div>
-          <button type="button" id="gelismisAc" class="gelismisAc">gelişmiş</button>
-          <input type="text" id="referer" class="referer" style="display:none"
-            placeholder="Kaynak site — bazı korumalı bağlantılar için (örn. coderspace.io)"
-            aria-label="Kaynak site (opsiyonel)">
+        <input type="file" id="dosya" accept="video/*,audio/*,application/pdf,.mp4,.mkv,.webm,.mp3,.m4a,.wav,.pdf,.md,.markdown,.txt" hidden>
+        <div class="secilen" id="secilen" style="display:none">
+          <span id="yukleMetin"></span>
+          <button type="button" id="dosyaKaldir" class="gelismisAc" aria-label="Dosyayı kaldır">kaldır</button>
         </div>
-
-        <div id="panelDosya" style="display:none">
-          <label class="dosyaAlan" id="yukleAlan">
-            <input type="file" id="dosya" accept="video/*,audio/*,application/pdf,.mp4,.mkv,.webm,.mp3,.m4a,.wav,.pdf,.md,.markdown,.txt" hidden>
-            <span id="yukleMetin">Bir video, ses, PDF ya da Markdown seç</span>
-          </label>
-          <div class="satir" style="margin-top:var(--space-3);justify-content:flex-end">
-            <button class="btn" id="btnDosya" type="button">İşle</button>
-          </div>
-        </div>
+        <div class="birakIpucu" id="birakIpucu">Bırak — işlensin</div>
 
         <div class="ilerleme" id="ilerleme"><div id="ilerlemeCubuk"></div></div>
 
-        <div style="margin-top:var(--space-5);border-top:1px solid var(--border-hair);padding-top:var(--space-4)">
-          <div id="icerikBlok">
-            <label class="eyebrow" for="icerikTur">içerik</label>
-            <select id="icerikTur" style="margin-top:6px">
-              <option value="0">Video (slaytlar dahil)</option>
-              <option value="1">Sadece ses (daha hızlı)</option>
-            </select>
+        <button type="button" id="gelismisAc" class="gelismisAc">ayarlar</button>
+        <div id="ayarlar" style="display:none">
+          <input type="text" id="referer" class="referer"
+            placeholder="Videonun olduğu sayfa (korumalı videolar için)"
+            aria-label="Videonun olduğu sayfa">
+          <div class="ayarSatir">
+            <div id="icerikBlok">
+              <label class="eyebrow" for="icerikTur">içerik</label>
+              <select id="icerikTur">
+                <option value="0">Video + slaytlar</option>
+                <option value="1">Sadece ses</option>
+              </select>
+            </div>
+            <div>
+              <label class="eyebrow" for="saglayici">model</label>
+              <select id="saglayici"></select>
+            </div>
           </div>
-          <div id="transkriptBlok" style="display:none">
-            <label class="eyebrow" for="transkriptKaynak" style="display:block;margin-top:var(--space-4)">transkript</label>
-            <select id="transkriptKaynak" style="margin-top:6px">
-              <option value="">Sunucu (Groq) — hızlı, kısa videolar için</option>
-              <option value="yerel">Yerel (ev bilgisayarı) — uzun videolar, Groq 502 yok</option>
-            </select>
-            <div class="ipucu" id="transkriptNot" style="margin-top:8px;display:none"></div>
-          </div>
-          <label class="eyebrow" for="saglayici" style="display:block;margin-top:var(--space-4)">model</label>
-          <select id="saglayici" style="margin-top:6px"></select>
-          <div class="ipucu" id="saglayiciNot" style="margin-top:8px"></div>
+          <div class="ipucu" id="saglayiciNot"></div>
         </div>
       </div>
 
-      <p class="ipucu" id="ipucu" style="margin-top:var(--space-4)"></p>
+      <p class="ipucu yerImi">Korumalı ders siteleri için:
+        <a class="yerImiBtn" id="yerImi" href="#" title="Yer imleri çubuğuna sürükle">Tanık'a gönder</a>
+        düğmesini yer imleri çubuğuna sürükle; dersin sayfasında tıkla.</p>
+      <p class="ipucu" id="ipucu"></p>
     </section>
 
     <!-- SONUÇ -->
     <section class="kolon" id="icerik" style="display:none">
       <div id="durum"></div>
       <div class="ozet" id="ozet"></div>
+      <!-- İş sürerken hazır olanlar: transkript + biten bölümler -->
+      <div class="canli" id="canli"></div>
+
+      <!-- ÇALIŞ: test + bilgi kartları (özetten, istenince üretilir) -->
+      <div class="calisma" id="calisma" style="display:none">
+        <div class="eyebrow">çalış</div>
+        <div id="calismaIc">
+          <button class="btn" id="calismaUret" type="button">Test ve kart oluştur</button>
+        </div>
+      </div>
 
       <!-- KAYNAĞA SOR — cevap yalnızca transkriptten; kaynakta yoksa "bulamadım" -->
       <div class="sor" id="sor" style="display:none">
@@ -461,6 +525,7 @@ input[type=text]::placeholder { color: var(--text-faint); }
 // işaretler karışıyordu). İlgili teknik adımlar tek sade adımda birleşik.
 const ASAMALAR = [
   ["queued|waiting|awaiting_download|claimed", "Sırada"],
+  ["hizli",                          "Gemini videoyu izliyor"],
   ["fetch",                          "İndiriliyor"],
   ["pages",                          "Sayfalar okunuyor"],
   ["frames",                         "Slaytlar okunuyor"],
@@ -468,13 +533,13 @@ const ASAMALAR = [
   ["segment|summarize",              "Özetleniyor"],
   ["render",                         "Kaydediliyor"],
 ];
+// İlerlemeli aşamalar "taban:biten/toplam" yazılır; birimi tabana göre.
+const BIRIM = { pages: "sayfa", transcribe: "parça", summarize: "bölüm" };
 const asamaAdi = (stage) => {
-  // "pages:45/200" gibi ilerlemeli aşama: taban ("pages") roadmap'e eşlensin,
-  // detay ("45/200") etikete "— 45/200 sayfa" olarak eklensin.
   const [taban, detay] = String(stage || "").split(":");
   const bulunan = ASAMALAR.find(([k]) => k.split("|").includes(taban));
   const ad = bulunan ? bulunan[1] : (stage || "");
-  return detay ? `${ad} — ${detay} sayfa` : ad;
+  return detay ? `${ad} — ${detay} ${BIRIM[taban] || ""}`.trim() : ad;
 };
 
 const KISA_AD = { groq: "Groq", openrouter: "OpenRouter", gemini: "Gemini", anthropic: "Claude" };
@@ -628,7 +693,7 @@ async function saglayicilar() {
     sel.innerHTML = `<option>anahtar yok</option>`;
     sel.disabled = true;
     $("#saglayiciNot").textContent = "Hiçbir sağlayıcı anahtarı yok — .env doldurulmalı.";
-    $("#btn").disabled = true; $("#btnDosya").disabled = true;
+    $("#btn").disabled = true;
     return;
   }
   sel.innerHTML = ps.map((p) =>
@@ -704,7 +769,9 @@ async function kullanimGuncelle() {
     el.style.display = "inline-flex";
     const renk = u.yuzde > 20 ? "var(--sig-verified)" : "var(--accent)";
     el.innerHTML = `kalan <span class="bar"><i style="width:${u.yuzde}%;background:${renk}"></i></span>%${u.yuzde}`;
-    el.title = `OpenRouter kalan: ${u.kalan} / ${u.limit}`;
+    el.title = `OpenRouter bakiyesi: $${u.kalan} / $${u.limit}` +
+      (u.yuzde < 2 ? "
+Bitti — özetler başka modelle (daha yavaş) yapılıyor." : "");
   } catch { /* alınamadıysa olduğu gibi bırak */ }
 }
 
@@ -767,15 +834,22 @@ function asamaHtml(job) {
   // Yalnız bu işe uyan adımlar: belgede indirme/slayt/yazıya dökme yok; videoda
   // sayfa yok; "sadece ses"te slayt yok.
   const src = String(job.source || "").toLowerCase();
-  const belge = /\.(pdf|md|markdown|txt)$/.test(src) || String(job.stage || "").startsWith("pages");
-  const gizle = belge ? ["fetch", "frames", "subtitles|transcribe|repair"]
+  const [taban, detay] = String(job.stage || "").split(":");
+  const belge = /\.(pdf|md|markdown|txt)$/.test(src) || taban === "pages";
+  const gizle = belge ? ["hizli", "fetch", "frames", "subtitles|transcribe|repair"]
     : job.audio_only ? ["pages", "frames"] : ["pages"];
+  // Hızlı yol adımı yalnız o an koşuyorsa görünür (olmazsa klasik yola dönülür).
+  if (taban !== "hizli") gizle.push("hizli");
   const adimlar = ASAMALAR.filter(([k]) => !gizle.includes(k));
-  const i = adimlar.findIndex(([k]) => k.split("|").includes(String(job.stage || "").split(":")[0]));
+  const i = adimlar.findIndex(([k]) => k.split("|").includes(taban));
+  const [biten, toplam] = (detay || "").split("/").map(Number);
   return adimlar.map(([, ad], n) => {
     const sinif = n < i ? "bitti" : n === i ? "aktif" : "bekleyen";
     const im = n < i ? "✓" : n === i ? "●" : "○";
-    return `<div class="asama ${sinif}"><span class="im">${im}</span>${esc(ad)}</div>`;
+    const etiket = n === i ? asamaAdi(job.stage) : ad;
+    const cubuk = n === i && toplam > 0
+      ? `<div class="asamaCubuk"><i style="width:${Math.round(100 * biten / toplam)}%"></i></div>` : "";
+    return `<div class="asama ${sinif}"><span class="im">${im}</span>${esc(etiket)}</div>${cubuk}`;
   }).join("");
 }
 
@@ -1263,10 +1337,38 @@ async function goster(id) {
   }, 2500);
 }
 
+// ── canlı önizleme ──────────────────────────────────────────────
+// İş sürerken hazır olan transkript ve biten bölüm özetleri. Yalnız aşama
+// değişince yeniden istenir (transkript büyük olabilir); aynıysa DOM'a dokunulmaz
+// (açık "transkript" kutusu kapanmasın).
+let _canliAnahtar = "", _canliVeri = "";
+async function canliCiz(j, zorla) {
+  const kutu = $("#canli");
+  const anahtar = `${j.id}|${j.stage}|${j.status}`;
+  if (!zorla && anahtar === _canliAnahtar) return;
+  _canliAnahtar = anahtar;
+  let d = {};
+  try { d = await (await fetch(`/jobs/${j.id}/canli`)).json(); } catch { return; }
+  const imza = JSON.stringify([j.id, (d.bolumler || []).length, (d.transkript || "").length]);
+  if (imza === _canliVeri) return;
+  _canliVeri = imza;
+  if (!d.transkript && !(d.bolumler || []).length) { kutu.innerHTML = ""; return; }
+  const bolumler = (d.bolumler || []).map((b) => `<div class="cBolum">
+      <h3><code>${fmtTs(b.start)}</code> ${esc(b.baslik || "")}</h3>
+      <p>${esc(b.ozet || "")}</p>
+      ${(b.maddeler || []).length ? `<ul>${b.maddeler.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+    </div>`).join("");
+  const hazir = j.status === "error" ? "Hazır olanlar" : "Şimdiye kadar hazır olanlar";
+  kutu.innerHTML = `<div class="eyebrow">${hazir}</div>${bolumler}
+    ${d.transkript ? `<details${bolumler ? "" : " open"}><summary>Transkript (${Math.round(d.transkript.length / 1000)} bin karakter)</summary>
+      <pre>${esc(d.transkript)}</pre></details>` : ""}`;
+}
+
 async function ciz() {
   const j = await (await fetch(`/jobs/${secili}`)).json();
   // Sohbet yalnızca hazır işte anlamlı: transkript diske ancak "done"da yazılıyor.
   $("#sor").style.display = "none";
+  $("#calisma").style.display = "none";
 
   if (j.status === "error" || j.status === "cancelled") {
     const iptal = j.status === "cancelled";
@@ -1275,11 +1377,13 @@ async function ciz() {
         ? "Durduruldu. Yeniden deneyebilir ya da silebilirsin."
         : "Sebep:"}</p>
       ${!iptal ? `<div class="hata">${esc(j.error || "bilinmeyen")}</div>` : ""}
-      <div class="satir" style="margin-top:var(--space-5)">
+      <p class="ipucu" style="margin-top:var(--space-3)">Tekrar denersen biten adımlar (indirme, transkript…) baştan yapılmaz.</p>
+      <div class="satir" style="margin-top:var(--space-4)">
         <button class="btn" id="tekrarDene" type="button">tekrar dene</button>
         <button class="btn sessiz" id="silHata" type="button">sil</button>
       </div>`;
     $("#ozet").innerHTML = "";
+    canliCiz(j);
     $("#tekrarDene").onclick = async () => {
       const r = await fetch(`/jobs/${j.id}/retry`, { method: "POST" });
       if (!r.ok) { alert("Yeniden denenemedi: " + ((await r.json()).detail || r.statusText)); return; }
@@ -1315,6 +1419,7 @@ async function ciz() {
         <button class="btn sessiz" id="durdur" type="button">durdur / iptal</button>
       </div>`;
     $("#ozet").innerHTML = "";
+    canliCiz(j);
     $("#durdur").onclick = async () => {
       if (!confirm("Bu işi durdurmak istediğine emin misin?")) return;
       const r = await fetch(`/jobs/${j.id}/cancel`, { method: "POST" });
@@ -1356,11 +1461,134 @@ async function ciz() {
     sonListe = null; await ciz(); listele();
   };
 
+  $("#canli").innerHTML = ""; _canliAnahtar = ""; _canliVeri = "";
+  // Uzun işin bazı parçaları düştüyse: yalnız onları yeniden işleme düğmesi.
+  const pf = (j.meta || {}).parts_failed;
+  if (pf) {
+    $("#durum").insertAdjacentHTML("beforeend", `<div class="satir" style="margin:var(--space-4) 0;align-items:center">
+      <span class="ipucu">${pf} parça işlenemedi.</span>
+      <button class="btn sessiz" id="parcaTekrar" type="button">düşen parçaları tekrar dene</button></div>`);
+    $("#parcaTekrar").onclick = async () => {
+      const r = await fetch(`/jobs/${j.id}/retry`, { method: "POST" });
+      if (!r.ok) { alert("Yeniden denenemedi: " + ((await r.json()).detail || r.statusText)); return; }
+      sonListe = null; goster(j.id);
+    };
+  }
+
   $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
   enstrumanla($("#ozet"));
   kopyaButonlari($("#ozet"));
+  calismaKur(j);
   sorKur(j);
   return true;
+}
+
+// ── çalış: test + bilgi kartları ────────────────────────────────
+// Özetten istenince üretilir (sunucu bir kez üretip saklar). Test: seçeneğe tıkla,
+// doğru/yanlış + açıklama anında; skor tutulur. Kartlar: tıkla çevir, ←/→ gez.
+function calismaKur(j) {
+  const panel = $("#calisma");
+  panel.style.display = "block";
+  if (panel.dataset.job === j.id) return;  // aynı iş yeniden çizildi: durumu koru
+  panel.dataset.job = j.id;
+  $("#calismaIc").innerHTML = `<button class="btn" id="calismaUret" type="button">Test ve kart oluştur</button>
+    <span class="ipucu" style="margin-left:10px">Özetten 8 soru + 12 kart</span>`;
+  const url = j.origin_url || (j.meta && j.meta.url) || "";
+  const getir = async (yenile) => {
+    $("#calismaIc").innerHTML = `<p class="ipucu">Hazırlanıyor… (ilk seferde 10-30 sn)</p>`;
+    try {
+      const r = await fetch(`/jobs/${j.id}/calisma${yenile ? "?yenile=true" : ""}`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      calismaCiz(d, url, () => getir(true));
+    } catch (e) {
+      $("#calismaIc").innerHTML = `<div class="hata">${esc(e.message)}</div>
+        <button class="btn sessiz" id="calismaUret" type="button" style="margin-top:10px">tekrar dene</button>`;
+      $("#calismaUret").onclick = () => getir(false);
+    }
+  };
+  $("#calismaUret").onclick = () => getir(false);
+}
+
+function calismaCiz(d, url, yenile) {
+  const kok = $("#calismaIc");
+  kok.innerHTML = `<div class="sekmeler" role="tablist">
+      <button class="sekme" id="cTest" role="tab" aria-selected="true" type="button">Test (${d.sorular.length})</button>
+      <button class="sekme" id="cKart" role="tab" aria-selected="false" type="button">Kartlar (${d.kartlar.length})</button>
+      <button class="gelismisAc" id="cYeni" type="button" style="margin-left:auto">yeni set</button>
+    </div><div id="cGovde"></div>`;
+  const sekme = (test) => {
+    $("#cTest").setAttribute("aria-selected", String(test));
+    $("#cKart").setAttribute("aria-selected", String(!test));
+    test ? testCiz(d.sorular, url) : kartCiz(d.kartlar);
+  };
+  $("#cTest").onclick = () => sekme(true);
+  $("#cKart").onclick = () => sekme(false);
+  $("#cYeni").onclick = () => { if (confirm("Yeni bir soru/kart seti üretilsin mi?")) yenile(); };
+  sekme(true);
+}
+
+function zamanLink(z, url) {
+  if (!z || !url) return z ? ` <code>${esc(z)}</code>` : "";
+  const sn = z.split(":").reduce((a, b) => a * 60 + Number(b), 0);
+  if (!Number.isFinite(sn)) return "";
+  try {
+    const u = new URL(url); u.searchParams.set("t", sn + "s");
+    return ` <a href="${esc(u.toString())}" target="_blank" rel="noopener"><code>${esc(z)}</code></a>`;
+  } catch { return ""; }
+}
+
+function testCiz(sorular, url) {
+  let dogruSay = 0, cevaplanan = 0;
+  const g = $("#cGovde");
+  g.innerHTML = `<p class="skor" id="cSkor">0 / ${sorular.length}</p>` + sorular.map((s, i) => `
+    <div class="soruK" data-i="${i}">
+      <div class="s">${i + 1}. ${esc(s.soru)}</div>
+      ${s.secenekler.map((o, k) => `<button class="sec" type="button" data-k="${k}">${"ABCD"[k] || k + 1}) ${esc(o)}</button>`).join("")}
+      <div class="acik" style="display:none"></div>
+    </div>`).join("");
+  g.querySelectorAll(".soruK").forEach((kart) => {
+    const s = sorular[+kart.dataset.i];
+    kart.querySelectorAll(".sec").forEach((b) => b.onclick = () => {
+      const k = +b.dataset.k;
+      kart.querySelectorAll(".sec").forEach((x) => {
+        x.disabled = true;
+        if (+x.dataset.k === s.dogru) x.classList.add("dogru");
+      });
+      if (k !== s.dogru) b.classList.add("yanlis"); else dogruSay++;
+      cevaplanan++;
+      const a = kart.querySelector(".acik");
+      a.style.display = "block";
+      a.innerHTML = `${k === s.dogru ? "✓ Doğru." : "✗ Yanlış."} ${esc(s.aciklama || "")}${zamanLink(s.zaman, url)}`;
+      $("#cSkor").textContent = `${dogruSay} / ${sorular.length}` +
+        (cevaplanan === sorular.length ? ` — bitti (%${Math.round(100 * dogruSay / sorular.length)})` : "");
+    });
+  });
+}
+
+function kartCiz(kartlar) {
+  let i = 0;
+  const g = $("#cGovde");
+  if (!kartlar.length) { g.innerHTML = `<p class="ipucu">Kart yok.</p>`; return; }
+  g.innerHTML = `<div class="kartlar">
+    <button class="flash" id="flash" type="button" aria-label="Kartı çevir"><div class="ic">
+      <div class="yuz on" id="fOn"></div><div class="yuz arka" id="fArka"></div></div></button>
+    <div class="kartNav">
+      <button class="btn sessiz" id="fGeri" type="button">←</button>
+      <span class="skor" id="fSira"></span>
+      <button class="btn sessiz" id="fIleri" type="button">→</button>
+    </div>
+    <p class="ipucu">Karta tıkla: cevabı gör.</p></div>`;
+  const goster = () => {
+    $("#flash").classList.remove("cevrik");
+    $("#fOn").textContent = kartlar[i].on;
+    $("#fArka").textContent = kartlar[i].arka;
+    $("#fSira").textContent = `${i + 1} / ${kartlar.length}`;
+  };
+  $("#flash").onclick = () => $("#flash").classList.toggle("cevrik");
+  $("#fGeri").onclick = () => { i = (i - 1 + kartlar.length) % kartlar.length; goster(); };
+  $("#fIleri").onclick = () => { i = (i + 1) % kartlar.length; goster(); };
+  goster();
 }
 
 // ── kaynağa sor (dürüst sohbet) ─────────────────────────────────
@@ -1458,16 +1686,43 @@ $("#temizlik").onclick = async () => {
   $("#bakimSonuc").textContent = `${d.adet} öğe silindi (${mb(d.bayt)})`;
 };
 
-// ── giriş ───────────────────────────────────────────────────────
-const sekmeSec = (link) => {
-  $("#sekLink").setAttribute("aria-selected", String(link));
-  $("#sekDosya").setAttribute("aria-selected", String(!link));
-  $("#panelLink").style.display = link ? "block" : "none";
-  $("#panelDosya").style.display = link ? "none" : "block";
-  formSecenekleriGuncelle();
-};
-$("#sekLink").onclick = () => { sekmeSec(true); sifirlaDosya(); };
-$("#sekDosya").onclick = () => { sekmeSec(false); $("#kaynak").value = ""; };
+// ── giriş: TEK KUTU ─────────────────────────────────────────────
+// Link yapıştır ya da dosyayı kutuya/sayfaya bırak (veya "Dosya" ile seç). Ayrı
+// sekme yok: ne verildiğine bakıp doğru yolu kendisi seçer.
+function dosyaAyarla(f) {
+  if (!f) return;
+  const dt = new DataTransfer();
+  dt.items.add(f);
+  $("#dosya").files = dt.files;
+  $("#dosya").onchange();
+}
+$("#dosyaSec").onclick = () => $("#dosya").click();
+$("#dosyaKaldir").onclick = () => sifirlaDosya();
+(() => {
+  const kutu = $("#birKutu");
+  let derinlik = 0;
+  const dosyaMi = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files");
+  // Sayfanın herhangi bir yerine bırakmak da çalışsın (hedefi ıskalamak kolay).
+  window.addEventListener("dragenter", (e) => {
+    if (!dosyaMi(e) || $("#giris").style.display === "none") return;
+    derinlik++; kutu.classList.add("surukle");
+  });
+  window.addEventListener("dragleave", () => {
+    if (--derinlik <= 0) { derinlik = 0; kutu.classList.remove("surukle"); }
+  });
+  window.addEventListener("dragover", (e) => { if (dosyaMi(e)) e.preventDefault(); });
+  window.addEventListener("drop", (e) => {
+    if (!dosyaMi(e)) return;
+    e.preventDefault(); derinlik = 0; kutu.classList.remove("surukle");
+    if ($("#giris").style.display === "none") anaSayfa();
+    dosyaAyarla(e.dataTransfer.files[0]);
+  });
+  // Panodan dosya yapıştırma (ekran kaydı vb.)
+  $("#kaynak").addEventListener("paste", (e) => {
+    const f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
+    if (f) { e.preventDefault(); dosyaAyarla(f); }
+  });
+})();
 
 // Dosya/URL türünü algıla → uygun seçenekleri OTOMATİK öner + tür değişince güncelle.
 // Belge → video-only bloklar (içerik/transkript) gizli + özet Groq. Coderspace/CDN
@@ -1477,9 +1732,8 @@ const SES_UZANTI = /\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i;
 let _sonOneriTip = "__ilk__";
 
 function _tipVeOneri() {
-  const dosyaTab = $("#panelDosya").style.display !== "none";
-  const f = dosyaTab ? ($("#dosya").files[0] || null) : null;
-  const url = dosyaTab ? "" : ($("#kaynak") ? $("#kaynak").value.trim() : "");
+  const f = $("#dosya").files[0] || null;
+  const url = f ? "" : ($("#kaynak") ? $("#kaynak").value.trim() : "");
   if (f) {
     if (BELGE_UZANTI.test(f.name))
       return { tip: "belge", belge: true, oneri: { model: "groq", ipucu: "Belge algılandı → özet Groq'ta (büyük PDF çok parçaya bölünür; OpenRouter'ın günlük 50 istek limitine sığmaz)." } };
@@ -1517,29 +1771,29 @@ function formSecenekleriGuncelle() {
     if (oneri.model !== undefined) _trySet("#saglayici", oneri.model);
     if (oneri.icerik !== undefined) _trySet("#icerikTur", oneri.icerik);
     if (oneri.transkript !== undefined) _trySet("#transkriptKaynak", oneri.transkript);
-    if (oneri.referer !== undefined && $("#referer")) {
+    if (oneri.referer !== undefined && $("#referer") && !$("#referer").value) {
       $("#referer").value = oneri.referer;
-      if (oneri.referer && $("#gelismisAc")) { $("#referer").style.display = "block"; $("#gelismisAc").textContent = "gizle"; }
+      if (oneri.referer) ayarlarAc(true);
     }
   }
 }
-sekmeSec(true);
 
-$("#yukleAlan").onclick = () => $("#dosya").click();
 $("#dosya").onchange = () => {
   const f = $("#dosya").files[0];
   if (f) {
     $("#kaynak").value = "";
+    $("#kaynak").placeholder = "";
     $("#yukleMetin").textContent = `${f.name} (${mb(f.size)})`;
-    $("#yukleAlan").classList.add("dolu");
+    $("#secilen").style.display = "flex";
   }
   formSecenekleriGuncelle();
 };
 
 function sifirlaDosya() {
   $("#dosya").value = "";
-  $("#yukleMetin").textContent = "Bir video, ses, PDF ya da Markdown seç";
-  $("#yukleAlan").classList.remove("dolu");
+  $("#yukleMetin").textContent = "";
+  $("#secilen").style.display = "none";
+  $("#kaynak").placeholder = "Link yapıştır ya da dosyayı buraya bırak";
   formSecenekleriGuncelle();
 }
 
@@ -1559,7 +1813,7 @@ async function yuklemeModu() {
 function ilerlemeGoster(oran) {
   $("#ilerleme").style.display = "block";
   $("#ilerlemeCubuk").style.width = (oran * 100) + "%";
-  $("#btnDosya").textContent = `Yükleniyor… ${Math.round(oran * 100)}%`;
+  $("#btn").textContent = `Yükleniyor… ${Math.round(oran * 100)}%`;
 }
 
 async function yukle(dosya, provider, ses) {
@@ -1635,10 +1889,15 @@ function ayniVarMi(kaynak, dosyaAdi) {
   });
 }
 
-async function gonder(dosyaMi) {
+async function gonder(_eski, ekBaslik) {
   const kaynak = $("#kaynak").value.trim();
   const dosya = $("#dosya").files[0];
-  if (dosyaMi ? !dosya : !kaynak) return;
+  const dosyaMi = !!dosya;
+  if (!dosya && !kaynak) { $("#kaynak").focus(); return; }
+  if (!dosyaMi && !/^https?:\/\//i.test(kaynak)) {
+    alert("Bu bir link değil. Bir video/ders linki yapıştır ya da dosya seç.");
+    return;
+  }
 
   // Aynı kaynağı ikinci kez eklemeden önce uyar (yanlışlıkla tekrar yükleme).
   const varOlan = ayniVarMi(dosyaMi ? null : kaynak, dosyaMi ? dosya.name : null);
@@ -1656,7 +1915,8 @@ async function gonder(dosyaMi) {
   if (transkript === "yerel" && !agentAcik) {
     if (!confirm("Yerel transkript ev bilgisayarında (agent.ps1) çalışır ama şu an çevrimdışı görünüyor.\n\nİş, PC'yi açıp agent'ı başlatana kadar bekler. Yine de gönderilsin mi?")) return;
   }
-  $("#btn").disabled = true; $("#btnDosya").disabled = true;
+  $("#btn").disabled = true;
+  if (!dosyaMi) $("#btn").textContent = "Kontrol ediliyor…";
   try {
     let j;
     if (dosyaMi) {
@@ -1667,7 +1927,8 @@ async function gonder(dosyaMi) {
       const r = await fetch("/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: kaynak, provider: p, referer: ref, sadece_ses: ses, transkript: transkript || null }),
+        body: JSON.stringify({ source: kaynak, provider: p, referer: ref, sadece_ses: ses,
+          transkript: transkript || null, baslik: ekBaslik || null }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       j = await r.json();
@@ -1678,24 +1939,61 @@ async function gonder(dosyaMi) {
   } catch (e) {
     alert("Gönderilemedi: " + e.message);
   } finally {
-    $("#btn").disabled = false; $("#btnDosya").disabled = false;
-    $("#btnDosya").textContent = "İşle";
+    $("#btn").disabled = false;
+    $("#btn").textContent = "İşle";
     $("#ilerleme").style.display = "none";
     $("#ilerlemeCubuk").style.width = "0";
   }
 }
-$("#btn").onclick = () => gonder(false);
-$("#btnDosya").onclick = () => gonder(true);
-$("#kaynak").onkeydown = (e) => { if (e.key === "Enter") gonder(false); };
+$("#btn").onclick = () => gonder();
+$("#kaynak").onkeydown = (e) => { if (e.key === "Enter") gonder(); };
 $("#kaynak").oninput = formSecenekleriGuncelle;  // URL türüne göre önerileri güncelle
 
-// "gelişmiş": referer alanını aç/kapa (varsayılan gizli — sade giriş).
-$("#gelismisAc").onclick = () => {
-  const r = $("#referer");
-  const acik = r.style.display !== "none";
-  r.style.display = acik ? "none" : "block";
-  $("#gelismisAc").textContent = acik ? "gelişmiş" : "gizle";
-};
+// "ayarlar": sayfa adresi (referer) + içerik + model — varsayılan gizli, sade giriş.
+function ayarlarAc(ac) {
+  $("#ayarlar").style.display = ac ? "block" : "none";
+  $("#gelismisAc").textContent = ac ? "ayarları gizle" : "ayarlar";
+}
+$("#gelismisAc").onclick = () => ayarlarAc($("#ayarlar").style.display === "none");
+
+// ── yer imi (bookmarklet): "Tanık'a gönder" ─────────────────────
+// Ders sitesinde tıklanır: sayfanın yüklediği .m3u8/.mp4 adreslerini (tarayıcının
+// kaynak listesinden + <video> etiketlerinden) toplar, sayfa adresini (referer) ve
+// başlığı alır, Tanık'ı ?url=...&referer=...&baslik=... ile açar. Video bir
+// iframe'deyse (farklı site) iframe adresini gönderir; yt-dlp oradan bulur.
+// Hiç video yoksa sayfanın kendisini gönderir (YouTube vb. için de çalışır).
+(() => {
+  const kok = location.origin;
+  const kod = `(function(){var L=[];try{performance.getEntriesByType('resource').forEach(function(e){L.push(e.name)})}catch(x){}
+document.querySelectorAll('video,video source,audio,audio source').forEach(function(v){var s=v.currentSrc||v.src;if(s&&!/^blob:/.test(s))L.push(s)});
+var m=L.filter(function(u){return /\\.m3u8(\\?|$)/i.test(u)});
+var d=L.filter(function(u){return /\\.(mp4|webm|m4a|mp3)(\\?|$)/i.test(u)});
+var master=m.filter(function(u){return /master|playlist|index/i.test(u)});
+var v=(master[master.length-1])||m[m.length-1]||d[d.length-1];
+if(!v){var f=[].slice.call(document.querySelectorAll('iframe')).map(function(i){return i.src}).filter(function(s){return /player|embed|video|mediadelivery|vimeo|youtube|wistia|jwplayer|bunny/i.test(s)});v=f[0]||location.href}
+var q='url='+encodeURIComponent(v)+'&referer='+encodeURIComponent(location.href)+'&baslik='+encodeURIComponent(document.title.slice(0,200));
+window.open('${kok}/?'+q,'_blank')})()`;
+  $("#yerImi").href = "javascript:" + encodeURIComponent(kod.replace(/\n/g, ""));
+  $("#yerImi").onclick = (e) => {
+    e.preventDefault();
+    alert("Bu düğmeyi fareyle tutup tarayıcının yer imleri çubuğuna sürükle.\n\nSonra bir ders sayfasındayken (video oynarken) o yer imine tıkla — video Tanık'a gönderilir.");
+  };
+})();
+
+// Yer iminden gelindi: ?url=&referer=&baslik= → kutuyu doldur ve gönder.
+(() => {
+  const q = new URLSearchParams(location.search);
+  const url = q.get("url");
+  if (!url) return;
+  history.replaceState(null, "", location.pathname);  // yenilemede ikinci kez gönderme
+  $("#kaynak").value = url;
+  if (q.get("referer") && q.get("referer") !== url) {
+    $("#referer").value = q.get("referer");
+    ayarlarAc(true);
+  }
+  formSecenekleriGuncelle();
+  setTimeout(() => gonder(null, q.get("baslik") || null), 300);
+})();
 
 // Transkript kaynağı "yerel" seçilince ne demek olduğunu açıkla (ev bilgisayarı).
 if ($("#transkriptKaynak")) {

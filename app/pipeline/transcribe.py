@@ -5,7 +5,10 @@ gerçek süresi ölçülüp zaman damgaları global zaman eksenine kaydırılır
 """
 
 import asyncio
+import importlib.util
 import json
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +20,9 @@ from ..config import (
     GROQ_API_KEYS,
     GROQ_BASE_URL,
     GROQ_TRANSCRIBE_MODEL,
+    LOCAL_WHISPER,
+    LOCAL_WHISPER_MODEL,
+    ON_VERCEL,
     TRANSCRIBE_CONCURRENCY,
     TRANSCRIBE_LANGUAGE,
 )
@@ -101,7 +107,62 @@ def _groq_keys() -> list[str]:
     return GROQ_API_KEYS or ([GROQ_API_KEY] if GROQ_API_KEY else [])
 
 
+class _GroqDustu(RuntimeError):
+    """Groq bu parçayı veremedi — yerel yedeğe düşülebilir."""
+
+
+# --- Yerel yedek (faster-whisper) ------------------------------------------------
+# Groq düşünce (kota, 5xx, geçersiz anahtar) iş ÖLMESİN: ev bilgisayarında aynı
+# parça yerel Whisper ile yazılır. Yavaş (CPU) ama iş her zaman biter; eskiden
+# 10 deneme + dakikalarca bekleme sonrası tüm iş hata veriyordu (israf).
+# Vercel'de yok (paket/CPU yok) — orada eski davranış.
+_yerel_model = None
+_yerel_kilit = threading.Lock()
+
+
+def yerel_var() -> bool:
+    if ON_VERCEL or not LOCAL_WHISPER:
+        return False
+    return importlib.util.find_spec("faster_whisper") is not None
+
+
+def _yerel_sync(path: Path) -> list[Segment]:
+    global _yerel_model
+    from faster_whisper import BatchedInferencePipeline, WhisperModel
+
+    # Tek model, aynı anda tek transkript: batched çıkarım zaten tüm çekirdekleri
+    # kullanıyor; paralel ikinci geçiş yalnız yavaşlatır.
+    with _yerel_kilit:
+        if _yerel_model is None:
+            print(f"[transcribe] yerel model yukleniyor ({LOCAL_WHISPER_MODEL})", flush=True)
+            _yerel_model = WhisperModel(LOCAL_WHISPER_MODEL, device="cpu", compute_type="int8")
+        segs, _info = BatchedInferencePipeline(model=_yerel_model).transcribe(
+            str(path), batch_size=8, language=TRANSCRIBE_LANGUAGE, vad_filter=True
+        )
+        return [Segment(float(s.start), float(s.end), s.text.strip())
+                for s in segs if s.text.strip()]
+
+
+async def _yerel(path: Path) -> list[Segment]:
+    return await asyncio.to_thread(_yerel_sync, path)
+
+
 async def _transcribe_chunk(
+    client: httpx.AsyncClient, path: Path, idx: int
+) -> list[Segment]:
+    """Groq ile yaz; olmazsa (ve ev bilgisayarındaysak) yerel yedeğe düş."""
+    if not _groq_keys():
+        return await _yerel(path)
+    try:
+        return await _groq_chunk(client, path, idx)
+    except _GroqDustu as exc:
+        if not yerel_var():
+            raise RuntimeError(str(exc)) from None
+        print(f"[transcribe] {path.name}: {exc} -> YEREL yedek", flush=True)
+        return await _yerel(path)
+
+
+async def _groq_chunk(
     client: httpx.AsyncClient, path: Path, idx: int
 ) -> list[Segment]:
     data = {
@@ -119,8 +180,11 @@ async def _transcribe_chunk(
     # anahtarda davranış eskisiyle aynı (her denemede backoff).
     keys = _groq_keys()
     nkey = max(1, len(keys))
+    yedek = yerel_var()
+    # Yerel yedek varsa Groq'u uzun uzun bekleme: 4 denemede olmadıysa yerele geç.
+    deneme = 4 if yedek else 10
     last_error: Exception | None = None
-    for attempt in range(10):
+    for attempt in range(deneme):
         key = keys[(idx + attempt) % nkey]
         cycled = (attempt + 1) % nkey == 0  # tüm anahtarlar bir tur denendi mi
         try:
@@ -131,12 +195,19 @@ async def _transcribe_chunk(
                     files={"file": (path.name, fh, "audio/flac")},
                     data=data,
                 )
+            if resp.status_code in (401, 403):
+                raise _GroqDustu(f"Groq anahtarı geçersiz (HTTP {resp.status_code})")
             if resp.status_code == 429:
                 last_error = RuntimeError("Groq 429 (rate limit)")
                 if cycled:
                     wait = float(resp.headers.get("retry-after", 2 ** (attempt // nkey)))
+                    if wait > 60 and yedek:
+                        # Saatlik/günlük ses kotası doldu: beklemek dakikalar sürer.
+                        raise _GroqDustu(f"Groq ses kotası doldu ({int(wait)} sn bekleme)")
                     await asyncio.sleep(min(wait, 60))
                 continue
+            if 400 <= resp.status_code < 500:
+                raise _GroqDustu(f"Groq {resp.status_code}: {resp.text[:160]}")
             if resp.status_code >= 500:
                 # Groq'un kendi sorunu; bizim istekte düzeltilecek bir şey yok.
                 last_error = RuntimeError(f"Groq {resp.status_code}")
@@ -144,7 +215,7 @@ async def _transcribe_chunk(
                     bekle = min(2 ** (attempt // nkey), 60)
                     print(
                         f"[transcribe] {path.name}: Groq {resp.status_code} (gecici), "
-                        f"{bekle} sn sonra yeniden ({attempt + 1}/10)",
+                        f"{bekle} sn sonra yeniden ({attempt + 1}/{deneme})",
                         flush=True,
                     )
                     await asyncio.sleep(bekle)
@@ -160,8 +231,8 @@ async def _transcribe_chunk(
             last_error = exc
             if cycled:
                 await asyncio.sleep(min(2 ** (attempt // nkey), 60))
-    raise RuntimeError(
-        f"Groq transkripsiyonu başarısız ({path.name}), 10 deneme: {last_error}"
+    raise _GroqDustu(
+        f"Groq transkripsiyonu başarısız ({path.name}), {deneme} deneme: {last_error}"
     )
 
 
@@ -182,12 +253,21 @@ def _onbellekten(audio: Path) -> list[Segment] | None:
         return None
 
 
-async def transcribe(audio: Path, work: Path) -> list[Segment]:
+def kullanilabilir() -> bool:
+    """Bu makinede transkript üretilebilir mi (Groq anahtarı ya da yerel Whisper)?
+    Ön kontrol bunu indirmeden ÖNCE sorar."""
+    return bool(_groq_keys()) or yerel_var()
+
+
+async def transcribe(
+    audio: Path, work: Path, ilerleme: Callable[[int, int], None] | None = None
+) -> list[Segment]:
+    """ilerleme(biten, toplam): her ses parçası yazıldıkça (arayüz 'transkript 3/7')."""
     hazir = _onbellekten(audio)
     if hazir:
         print(f"[transcribe] {audio.name}: onbellekten ({len(hazir)} segment)", flush=True)
         return hazir
-    segs = await _transcribe(audio, work)
+    segs = await _transcribe(audio, work, ilerleme)
     try:
         _onbellek_yolu(audio).write_text(json.dumps({
             "boyut": audio.stat().st_size,
@@ -198,9 +278,11 @@ async def transcribe(audio: Path, work: Path) -> list[Segment]:
     return segs
 
 
-async def _transcribe(audio: Path, work: Path) -> list[Segment]:
-    if not _groq_keys():
-        raise RuntimeError("GROQ_API_KEY tanımlı değil.")
+async def _transcribe(
+    audio: Path, work: Path, ilerleme: Callable[[int, int], None] | None = None
+) -> list[Segment]:
+    if not kullanilabilir():
+        raise RuntimeError("GROQ_API_KEY tanımlı değil (ve yerel Whisper yok).")
 
     # Zaman damgaları parça-yerel gelir; offset ile global eksene kaydırılır.
     chunks = await _split(audio, work)
@@ -211,10 +293,19 @@ async def _transcribe(audio: Path, work: Path) -> list[Segment]:
     sem = asyncio.Semaphore(esz)
     limits = httpx.Limits(max_connections=esz)
 
+    biten = [0]
+
     async with httpx.AsyncClient(timeout=300, limits=limits) as client:
         async def one(idx: int, chunk: Path) -> list[Segment]:
             async with sem:
-                return await _transcribe_chunk(client, chunk, idx)
+                segs = await _transcribe_chunk(client, chunk, idx)
+            biten[0] += 1
+            if ilerleme:
+                try:
+                    ilerleme(biten[0], len(chunks))
+                except Exception:
+                    pass
+            return segs
 
         results = await asyncio.gather(
             *(one(i, c) for i, (c, _) in enumerate(chunks))

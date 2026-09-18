@@ -400,7 +400,16 @@ async def complete_json(
     if aktif == "openrouter":
         if not OPENROUTER_API_KEY:
             raise LLMError("Sağlayıcı openrouter seçildi ama OPENROUTER_API_KEY boş.")
-        return await _openrouter_json(system, user, schema, effort, max_tokens)
+        try:
+            return await _openrouter_json(system, user, schema, effort, max_tokens)
+        except LLMError as exc:
+            # Bakiye İŞ SIRASINDA bitti (402): Gemini anahtarı varsa bu çağrıyı ona
+            # devret — pencere boyutları aynı (bkz. PROVIDER_WINDOWS), iş yarıda
+            # kalmasın. Groq'a devredilmez: pencereleri küçük, istek sığmaz.
+            if "402" not in str(exc) or not GEMINI_API_KEY:
+                raise
+            print("[llm] OpenRouter 402 (bakiye) -> bu cagri Gemini'ye", flush=True)
+            return await _gemini_json(system, user, schema, effort, max_tokens)
     if aktif == "gemini":
         if not GEMINI_API_KEY:
             raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")
@@ -458,4 +467,61 @@ async def anahtar_kontrol(ad: str | None = None) -> None:
             f"bilgisayarındaki .env'de anahtarı düzelt ya da başka sağlayıcıyla gönder."
         )
     if r.status_code == 200:
+        if ad == "openrouter":
+            await _openrouter_bakiye_kontrol()
         _ANAHTAR_OK[ad] = _time.time()
+
+
+# OpenRouter'da anahtarın "limit"i hesabın BAKİYESİ değil: anahtar limiti $5 ve
+# 'kalan $4,99' derken hesap bakiyesi $0,0003'tü (ölçüldü). Bakiye bitince her
+# çağrı 402 alır — özet adımında, emek harcandıktan sonra. /credits gerçeği söyler.
+_OR_MIN_BAKIYE = 0.02
+
+
+async def _openrouter_bakiye_kontrol() -> None:
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(f"{OPENROUTER_BASE_URL}/credits",
+                            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"})
+        d = r.json().get("data") or {}
+        kalan = float(d["total_credits"]) - float(d["total_usage"])
+    except Exception:
+        return  # ölçülemedi: engelleme
+    if kalan < _OR_MIN_BAKIYE:
+        raise LLMError(
+            f"OpenRouter bakiyesi bitti (kalan ${max(kalan, 0):.4f}). "
+            f"openrouter.ai/settings/credits'ten kredi eklenmeli."
+        )
+
+
+# Otomatik geçişte denenecek sıra: kalite/hız dengesi (config.LLM_PROVIDER ile aynı
+# mantık). Groq en sonda: ücretsiz ama dakikalık kota yüzünden özette yavaş.
+_YEDEK_SIRASI = ("anthropic", "gemini", "openrouter", "groq")
+
+
+async def saglayici_sec(istenen: str | None = None) -> tuple[str, str | None]:
+    """İstenen sağlayıcı kullanılabiliyorsa onu, değilse çalışan ilk yedeği seç.
+
+    Eskiden seçilen sağlayıcının anahtarı/bakiyesi sorunluysa iş düşüyordu; oysa
+    başka bir sağlayıcının anahtarı hazırdı. Dönen: (seçilen, not) — not yalnız
+    geçiş olduysa dolu (arayüze/loga "neden X yerine Y" diye yazılır).
+    Hiçbiri çalışmıyorsa ilk (istenenin) hatası fırlatılır.
+    """
+    from .config import provider_available
+
+    istenen = istenen or provider()
+    sira = [istenen] + [a for a in _YEDEK_SIRASI if a != istenen]
+    ilk_hata: LLMError | None = None
+    for ad in sira:
+        if ad != istenen and not provider_available(ad):
+            continue
+        try:
+            await anahtar_kontrol(ad)
+        except LLMError as exc:
+            ilk_hata = ilk_hata or exc
+            print(f"[llm] {ad} kullanilamiyor: {str(exc)[:160]}", flush=True)
+            continue
+        if ad == istenen:
+            return ad, None
+        return ad, f"{istenen} kullanılamadı ({str(ilk_hata)[:120]}), {ad} ile işlendi."
+    raise ilk_hata or LLMError("Hiçbir özet sağlayıcısı kullanılamıyor.")

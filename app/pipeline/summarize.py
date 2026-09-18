@@ -6,6 +6,7 @@ sorar ve bulduklarını geri ekler.
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..llm import complete_json, language_rule, windows
@@ -667,18 +668,29 @@ async def summarize(
     sections: list[Section],
     transcript: str,
     frames: list[Frame] | None = None,
+    ilerleme: "Callable[[int, int, SectionSummary], None] | None" = None,
 ) -> Digest:
+    """ilerleme(biten, toplam, bolum): her bölüm özeti bittikçe çağrılır — arayüz
+    özetin tamamını beklemeden hazır bölümleri gösterir (worker canlı önizleme)."""
     frames = frames or []
     sem = asyncio.Semaphore(SECTION_CONCURRENCY)
+    biten = [0]
 
     async def one(section: Section, is_last: bool) -> SectionSummary:
         # Son bölümün üst sınırını açık bırak: kapanış slaytı transkriptin son
         # sözünden sonra gelebilir, aksi halde kaybolurdu.
         end = float("inf") if is_last else section.end
         async with sem:
-            return await _summarize_section(
+            sonuc = await _summarize_section(
                 section, for_range(frames, section.start, end)
             )
+        biten[0] += 1
+        if ilerleme:
+            try:
+                ilerleme(biten[0], len(sections), sonuc)
+            except Exception as exc:  # önizleme asla özeti düşürmesin
+                print(f"[summarize] ilerleme bildirimi hatasi: {exc!r}", flush=True)
+        return sonuc
 
     summaries = list(
         await asyncio.gather(

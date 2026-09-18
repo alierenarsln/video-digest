@@ -54,6 +54,7 @@
         <label class="hatirla">
           <input type="checkbox" name="hatirla" value="1" checked> Beni hatırla
         </label>
+        <input type="hidden" name="sonra" id="sonra" value="">
         <button class="btn" type="submit">Giriş yap</button>
       </form>
       <div class="alt"><a href="/reset">Şifremi unuttum</a></div>
@@ -61,9 +62,12 @@
   </div>
   <script>
     // Hata sorgu parametresini göster (POST /login başarısızsa buraya döner).
-    if (new URLSearchParams(location.search).has("hata")) {
+    const q = new URLSearchParams(location.search);
+    if (q.has("hata")) {
       document.getElementById("hata").style.display = "block";
     }
+    // Girişten sonra gidilecek yer (yer iminden gelen link kaybolmasın).
+    document.getElementById("sonra").value = q.get("sonra") || "";
   </script>
 </body>
 </html>

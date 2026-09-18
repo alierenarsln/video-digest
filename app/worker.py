@@ -5,6 +5,8 @@ Ağır iş (ffmpeg) CPU-bağlı olduğu için işler sırayla koşar; paralellik
 """
 
 import asyncio
+import json
+import pickle
 import shutil
 import time
 import traceback
@@ -24,6 +26,7 @@ from .pipeline import (
     document,
     fetch,
     frames,
+    gemini_video,
     render,
     repair,
     segment,
@@ -43,6 +46,148 @@ _ucusta: set[str] = set()
 _current_id: str | None = None
 _current_task: "asyncio.Task | None" = None
 _user_cancel: set[str] = set()
+
+
+# --- Kaldığı yerden devam -------------------------------------------------------
+# Her pahalı aşamanın sonucu çalışma klasörüne yazılır (work/asama.<ad>.pkl). İş
+# bir adımda düşerse "tekrar dene" biten aşamaları YENİDEN YAPMAZ: indirme, slayt
+# OCR'ı, transkript, bölümleme, özet — hangisi bittiyse diskten gelir, yalnız
+# düşen adım koşar. Eskiden hata = her şey baştan (israf). LLM aşamaları
+# sağlayıcıya göre ayrı anahtarlanır: başka sağlayıcıyla tekrar denemek (pencere
+# boyutları farklı) eski sağlayıcının sonucunu kullanmasın. Klasör iş bitince
+# silinir; hatalı işinki 3 gün kalır (_eski_calismalari_temizle).
+def _kayit_yolu(work: Path, ad: str) -> Path:
+    return work / f"asama.{ad}.pkl"
+
+
+def _kayit_oku(work: Path, ad: str, gecerli=None):
+    """Önceki denemenin kaydı (yoksa/bozuksa/geçersizse None)."""
+    yol = _kayit_yolu(work, ad)
+    if not yol.exists():
+        return None
+    try:
+        deger = pickle.loads(yol.read_bytes())
+    except Exception as exc:
+        print(f"[devam] {ad} kaydi okunamadi, yeniden uretilecek: {exc!r}", flush=True)
+        return None
+    if gecerli is not None and not gecerli(deger):
+        return None
+    print(f"[devam] {work.name}: '{ad}' onceki denemeden alindi", flush=True)
+    return deger
+
+
+async def _asama(work: Path, ad: str, uret, gecerli=None):
+    deger = _kayit_oku(work, ad, gecerli)
+    if deger is not None:
+        return deger
+    yol = _kayit_yolu(work, ad)
+    deger = await uret()
+    try:
+        gecici = yol.with_suffix(".tmp")
+        gecici.write_bytes(pickle.dumps(deger))
+        gecici.replace(yol)
+    except Exception as exc:  # kayıt yazılamasa da iş sürsün
+        print(f"[devam] {ad} kaydedilemedi: {exc!r}", flush=True)
+    return deger
+
+
+async def _hizli_yol(job_id: str, url: str, work: Path):
+    """(Source, ekran kareleri) ya da None (klasik yola dön). Sonuç 'kaynak' ve
+    'hizli_ekran' kaydına yazılır: tekrar denemede Gemini'ye yeniden gidilmez."""
+    t0 = time.time()
+    try:
+        # Süre/başlık için yt-dlp -J (indirme YOK, birkaç saniye). YouTube bot
+        # kontrolüne takılırsa süresiz devam: tek pencerede istenir.
+        try:
+            info = json.loads(await fetch._ytdlp(
+                "--dump-single-json", "--no-playlist", "--no-warnings", url))
+        except Exception as exc:
+            print(f"[hizli] {job_id}: video bilgisi alinamadi ({str(exc)[:120]}), suresiz", flush=True)
+            info = {}
+        sure = float(info.get("duration") or 0)
+        if info:
+            fetch.onkontrol_canli(info)
+        segs, ekran = await gemini_video.oku(url, sure)
+    except gemini_video.HizliYolYok as exc:
+        print(f"[hizli] {job_id}: hizli yol olmadi -> klasik yol ({str(exc)[:200]})", flush=True)
+        return None
+    except RuntimeError as exc:
+        if "Ön kontrol" in str(exc):
+            raise
+        print(f"[hizli] {job_id}: hizli yol hatasi -> klasik yol ({exc!r})", flush=True)
+        return None
+    source = fetch.Source(
+        audio_path=Path(""),
+        title=info.get("title") or url,
+        duration=sure or max(s.end for s in segs),
+        video_path=None,
+        subtitles=segs,
+        meta={
+            "url": info.get("webpage_url") or url,
+            "uploader": info.get("uploader"),
+            "upload_date": info.get("upload_date"),
+            "language": info.get("language"),
+            "hizli_yol": True,
+        },
+    )
+    print(f"[hizli] {job_id}: {len(segs)} konusma, {len(ekran)} ekran "
+          f"({round(time.time() - t0)} sn)", flush=True)
+    for ad, deger in (("kaynak", source), ("hizli_ekran", ekran)):
+        _kayit_yolu(work, ad).write_bytes(pickle.dumps(deger))
+    return source, ekran
+
+
+def _kaynak_gecerli(s) -> bool:
+    ses_var = s.subtitles is not None or Path(s.audio_path).exists()
+    return ses_var and (s.video_path is None or Path(s.video_path).exists())
+
+
+def _kareler_gecerli(shots) -> bool:
+    return all(Path(f.path).exists() for f in shots)
+
+
+# --- Canlı önizleme -------------------------------------------------------------
+# İş sürerken hazır olan ara sonuçlar (transkript, biten bölüm özetleri) DB'ye
+# (jobs.canli) yazılır; arayüz özetin tamamını beklemeden gösterir. Özet adımı
+# düşse bile transkript elde kalır. İş 'done' olunca temizlenir (_bitir).
+_CANLI_TRANSKRIPT_SINIR = 150_000  # karakter; uzun videoda satır yükü sınırlı
+
+
+class _Canli:
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+        self.veri: dict = {}
+
+    def _yaz(self) -> None:
+        try:
+            db.canli_yaz(self.job_id, self.veri)
+        except Exception as exc:
+            print(f"[canli] {self.job_id} yazilamadi: {exc!r}", flush=True)
+
+    def transkript(self, metin: str) -> None:
+        self.veri["transkript"] = metin[:_CANLI_TRANSKRIPT_SINIR]
+        self._yaz()
+
+    def bolum_ilerleme(self, onek: str = ""):
+        """summarize(ilerleme=...) için geri çağırım: biten bölümü ekle + aşama i/n."""
+        def _cb(biten: int, toplam: int, s) -> None:
+            self.veri.setdefault("bolumler", []).append({
+                "baslik": (onek + s.section.title) if onek else s.section.title,
+                "start": s.section.start,
+                "ozet": s.summary,
+                "maddeler": [t for _ts, t in s.points][:8],
+            })
+            self.veri["bolumler"].sort(key=lambda b: b["start"])
+            self._yaz()
+            if not onek:
+                db.update(self.job_id, stage=f"summarize:{biten}/{toplam}")
+        return _cb
+
+
+def _asama_ilerleme(job_id: str, asama: str):
+    def _cb(biten: int, toplam: int) -> None:
+        db.update(job_id, stage=f"{asama}:{biten}/{toplam}")
+    return _cb
 
 
 async def enqueue(job_id: str) -> None:
@@ -148,7 +293,11 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     if hazir:
         part_files = [None] * n
     else:
-        part_files = await _split_audio(source.audio_path, part_len, work)
+        async def _bol():
+            return await _split_audio(source.audio_path, part_len, work)
+        part_files = await _asama(
+            work, "ses_parcalari", _bol, lambda ps: bool(ps) and all(p.exists() for p in ps)
+        )
         n = len(part_files) or n
     # Koleksiyonu başlıktan BİR KEZ belirle (paralel part'larda yarış olmasın).
     koleksiyon = await summarize.classify_collection(base_title, [], db.distinct_collections())
@@ -156,43 +305,69 @@ async def _process_long(job_id, job, source, shots, assets_rel, work, n) -> None
     # Part'lar PARALEL işlenir (PART_CONCURRENCY kadar aynı anda). Groq transkripti
     # kendi semaforuyla sıralanır (kazanç sınırlı); yerel transkriptte tam paralel.
     sem = asyncio.Semaphore(PART_CONCURRENCY)
-    biten = [0]
+    prov = llm.provider()
+    canli = _Canli(job_id)
+    # Tekrar denemede önceki koşuda BİTMİŞ parçalar yeniden işlenmez (sayaç da
+    # onlardan başlar); yalnız düşen parçalar koşar.
+    biten = [sum(1 for i in range(n) if (db.get(f"{job_id}p{i + 1}") or {}).get("status") == "done")]
+    db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
 
     async def _bir_part(i, pf):
         t0 = i * part_len
         aralik = f"{int(t0 // 60)}-{int((t0 + part_len) // 60)}dk"
         p_title = f"{base_title} — Part {i + 1} ({aralik})"
+        cid = f"{job_id}p{i + 1}"
+        ozet_kaydi = f"part{i + 1}.ozet.{prov}"
+        onceki = db.get(cid)
+        if onceki and onceki.get("status") == "done":
+            p_digest = _kayit_oku(work, ozet_kaydi)
+            if p_digest is not None:
+                return ("ok", i, p_title, p_digest)
         async with sem:
-            if hazir:
-                # Hazır altyazıyı bu parçanın aralığına göre dilimle (zaman zaten mutlak).
-                p_segs = [s for s in source.subtitles if t0 <= s.start < t0 + part_len]
-                if not p_segs:
-                    return ("hata", i, p_title, "Bu parçada altyazı segmenti yok (boş aralık).")
-            else:
-                try:
+            # Bir parçanın HERHANGİ bir adımı (transkript, bölümleme, özet) düşerse
+            # yalnız o parça kaybedilir; diğerleri tamamlanır. Eskiden transkript
+            # dışındaki bir hata gather'ı ve tüm uzun videoyu öldürüyordu.
+            try:
+                if hazir:
+                    # Hazır altyazıyı bu parçanın aralığına göre dilimle (zaman zaten mutlak).
+                    p_segs = [s for s in source.subtitles if t0 <= s.start < t0 + part_len]
+                    if not p_segs:
+                        return ("hata", i, p_title, "Bu parçada altyazı segmenti yok (boş aralık).")
+                else:
                     p_raw = await transcribe.transcribe(pf, work)
-                except Exception as exc:
-                    print(f"[part] {i + 1}/{n} transkript HATA: {exc}", flush=True)
-                    return ("hata", i, p_title, _hata_acikla(exc))
-                # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
-                p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_raw]
-            p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
-            p_transcript = transcribe.to_timestamped_text(p_segs)
-            p_sections = await segment.split_into_sections(p_segs, p_title, p_transcript)
-            p_digest = await summarize.summarize(p_sections, p_transcript, p_shots)
-            p_md = render.render(
-                p_digest, p_title, part_len, source.meta,
-                assets_rel=assets_rel if p_shots else None,
-            )
-            cid = f"{job_id}p{i + 1}"
-            db.create_job(cid, job["source"], None, provider)
-            out = OUT_DIR / f"{cid}.md"
-            out.write_text(p_md, encoding="utf-8")
-            await _bitir(
-                cid, title=p_title, collection=koleksiyon,
-                origin_url=origin_url, result_path=str(out),
-                meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
-            )
+                    # 0-tabanlı part zamanlarını mutlak zamana kaydır (tam videoya tıklanabilsin).
+                    p_segs = [transcribe.Segment(s.start + t0, s.end + t0, s.text) for s in p_raw]
+                p_shots = [f for f in shots if t0 <= f.ts < t0 + part_len]
+                p_transcript = transcribe.to_timestamped_text(p_segs)
+                p_sections = await _asama(
+                    work, f"part{i + 1}.bolumler.{prov}",
+                    lambda: segment.split_into_sections(p_segs, p_title, p_transcript),
+                )
+                p_digest = await _asama(
+                    work, ozet_kaydi,
+                    lambda: summarize.summarize(
+                        p_sections, p_transcript, p_shots,
+                        canli.bolum_ilerleme(onek=f"Part {i + 1} · "),
+                    ),
+                )
+                p_md = render.render(
+                    p_digest, p_title, part_len, source.meta,
+                    assets_rel=assets_rel if p_shots else None,
+                )
+                if onceki is None:
+                    db.create_job(cid, job["source"], None, provider)
+                out = OUT_DIR / f"{cid}.md"
+                out.write_text(p_md, encoding="utf-8")
+                await _bitir(
+                    cid, title=p_title, collection=koleksiyon,
+                    origin_url=origin_url, result_path=str(out),
+                    meta=_part_meta(source, part_len, job_id, p_digest, p_shots, assets_rel),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                print(f"[part] {i + 1}/{n} HATA: {exc}", flush=True)
+                return ("hata", i, p_title, _hata_acikla(exc))
             biten[0] += 1
             db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
             print(f"[part] {cid} bitti: {p_title}", flush=True)
@@ -256,10 +431,15 @@ async def _process(job_id: str) -> None:
 
     # Sağlayıcı iş başına seçiliyor (arayüzden). Pencere boyutları buna bağlı
     # olduğu için boru hattı başlamadan ÖNCE ayarlanmalı.
-    llm.set_provider(job.get("provider") or llm.provider())
-    # Özet anahtarı pahalı adımlardan ÖNCE doğrulansın (bkz. llm.anahtar_kontrol):
-    # geçersizse iş saniyeler içinde, hiçbir şey indirilmeden/harcanmadan durur.
-    await llm.anahtar_kontrol()
+    # Özet sağlayıcısı pahalı adımlardan ÖNCE doğrulansın (anahtar + OpenRouter
+    # bakiyesi). Sorunluysa çalışan bir yedeğe geçilir; hiçbiri yoksa iş saniyeler
+    # içinde, hiçbir şey indirilmeden/harcanmadan durur.
+    secilen, gecis = await llm.saglayici_sec(job.get("provider") or llm.provider())
+    llm.set_provider(secilen)
+    if gecis:
+        print(f"[llm] {job_id}: {gecis}", flush=True)
+        db.update(job_id, provider=secilen)
+        job["provider"] = secilen
 
     work = WORK_DIR / job_id
     work.mkdir(parents=True, exist_ok=True)
@@ -271,9 +451,17 @@ async def _process(job_id: str) -> None:
     # indir; hat (PDF/metin/video ayrımı dahil) oradan hiç değişmeden devam eder.
     if job["source"].startswith(storage.BLOB_ONEK):
         db.update(job_id, status="running", stage="fetch")
-        job["source"] = str(await asyncio.to_thread(
-            storage.indir_kaynak, job_id, job["source"], UPLOAD_DIR
-        ))
+        uzanti = Path(job["source"]).suffix.lower()[:10] or ".bin"
+        if (_kayit_oku(work, "kaynak", _kaynak_gecerli) is not None
+                or _kayit_yolu(work, "sayfalar").exists()):
+            # Önceki denemede zaten indirilip işlenmiş: Blob'dan tekrar indirme
+            # (başarılı işte Blob kaynağı silinmiş de olabilir). Uzantı yeter —
+            # hat seçimi (PDF/metin/video) ona bakıyor.
+            job["source"] = str(UPLOAD_DIR / f"{job_id}{uzanti}")
+        else:
+            job["source"] = str(await asyncio.to_thread(
+                storage.indir_kaynak, job_id, job["source"], UPLOAD_DIR
+            ))
     kaynak = job["source"]
     if not kaynak.startswith(("http://", "https://")):
         suffix = Path(kaynak).suffix.lower()
@@ -284,31 +472,52 @@ async def _process(job_id: str) -> None:
             await _process_text(job_id, Path(kaynak), work)
             return
 
+    # Hızlı yol (YouTube → Gemini videoyu linkiyle izler): indirme/OCR/Whisper yok.
+    # Olmazsa sessizce klasik yola dönülür; iş bu yüzden asla düşmez.
+    hizli = None
+    onceki = _kayit_oku(work, "kaynak", _kaynak_gecerli)
+    if onceki is not None and onceki.meta.get("hizli_yol"):
+        hizli = (onceki, _kayit_oku(work, "hizli_ekran") or [])
+    elif onceki is None and gemini_video.uygun_mu(kaynak):
+        db.update(job_id, status="running", stage="hizli")
+        hizli = await _hizli_yol(job_id, kaynak, work)
+
     db.update(job_id, status="running", stage="fetch")
-    source = await fetch.fetch(
-        job["source"], work, job.get("referer"), bool(job.get("audio_only"))
-    )
+    if hizli is not None:
+        source, hizli_ekran = hizli
+    else:
+        source = await _asama(
+            work, "kaynak",
+            lambda: fetch.fetch(job["source"], work, job.get("referer"), bool(job.get("audio_only"))),
+            _kaynak_gecerli,
+        )
 
     # Agent bir linki indirip yüklediyse dosya adı iş numarasıdır ve link
-    # kaybolmuştur. Orijinali geri koyuyoruz: başlık anlamlı olsun ve özetteki
-    # zaman damgaları videoya tıklanabilsin.
+    # kaybolmuştur. Orijinali geri koyuyoruz: özetteki zaman damgaları videoya
+    # tıklanabilsin.
     if job.get("origin_url"):
         source.meta["url"] = job["origin_url"]
-        if job.get("title"):
-            source.title = job["title"]
-
-    # Yüklemede başlık zaten orijinal dosya adına ayarlanmış olabilir (upload_job)
-    # — job_id'yle ezmeyelim; yoksa source.title (link'te yt-dlp başlığı) kullanılır.
+    # İşin başlığı (yüklemede orijinal dosya adı, YouTube'da oEmbed başlığı, yer
+    # iminde sayfa başlığı) kaynağın adından iyidir: m3u8'in adı "playlist",
+    # yüklemenin adı iş numarası. Bölümleme/özet de bu başlığı görür.
+    if job.get("title"):
+        source.title = job["title"].removesuffix(" — Tüm hali")
     db.update(job_id, title=job.get("title") or source.title)
 
     # Görsel katman ÖNCE: kareler transkriptten bağımsız (video'dan çıkar). Hem
     # kısa yolda onarımda hem uzun yolda part'lara zaman-damgasıyla dağıtımda lazım.
     assets_rel = f"{job_id}_frames"
     shots: list[frames.Frame] = []
-    if source.video_path is not None:
+    if hizli is not None:
+        # Ekran metni Gemini'den; görüntü dosyası yok → özette resim bağlantısı olmasın.
+        shots = [] if job.get("audio_only") else hizli_ekran
+        assets_rel = None
+    elif source.video_path is not None:
         db.update(job_id, stage="frames")
-        shots = await frames.extract(
-            source.video_path, source.duration, OUT_DIR / assets_rel
+        shots = await _asama(
+            work, "kareler",
+            lambda: frames.extract(source.video_path, source.duration, OUT_DIR / assets_rel),
+            _kareler_gecerli,
         )
 
     # UZUN VIDEO: transkriptten ÖNCE part'lara böl. Her part BAĞIMSIZ transkript →
@@ -321,6 +530,10 @@ async def _process(job_id: str) -> None:
         # başına özet her LLM çağrısını ~30dk'ya sınırlar. _process_long altyazı
         # hazırsa sesi yeniden transkript etmez, hazır segmentleri zamana böler.
         await _process_long(job_id, job, source, shots, assets_rel, work, n_part)
+        # Düşen parça varsa kayıtlar (indirilen video, transkriptler) kalsın:
+        # "tekrar dene" yalnız onları işler. Hepsi bittiyse disk boşalsın.
+        if not ((db.get(job_id) or {}).get("meta") or {}).get("parts_failed"):
+            shutil.rmtree(work, ignore_errors=True)
         return
 
     if source.subtitles is not None:
@@ -329,9 +542,15 @@ async def _process(job_id: str) -> None:
         segments = source.subtitles
     else:
         db.update(job_id, stage="transcribe")
-        segments = await transcribe.transcribe(source.audio_path, work)
+        segments = await transcribe.transcribe(
+            source.audio_path, work, _asama_ilerleme(job_id, "transcribe")
+        )
 
+    prov = llm.provider()
+    canli = _Canli(job_id)
     raw_transcript = transcribe.to_timestamped_text(segments)
+    # Ham transkript HEMEN görünsün: onarım/özet dakikalar sürebilir, düşebilir.
+    canli.transkript(raw_transcript)
     punct = repair.punct_density(segments)
     caps = repair.caps_ratio(segments)
     repaired = repair.needs_repair(segments)
@@ -343,9 +562,13 @@ async def _process(job_id: str) -> None:
     )
     if repaired:
         db.update(job_id, stage="repair")
-        segments = await repair.repair(segments, shots)
+        segments = await _asama(
+            work, f"onarim.{prov}", lambda: repair.repair(segments, shots)
+        )
 
     transcript = transcribe.to_timestamped_text(segments)
+    if repaired:
+        canli.transkript(transcript)
     transcript_path = OUT_DIR / f"{job_id}.transcript.txt"
     transcript_path.write_text(transcript, encoding="utf-8")
     if repaired:
@@ -355,10 +578,16 @@ async def _process(job_id: str) -> None:
         )
 
     db.update(job_id, stage="segment")
-    sections = await segment.split_into_sections(segments, source.title, transcript)
+    sections = await _asama(
+        work, f"bolumler.{prov}",
+        lambda: segment.split_into_sections(segments, source.title, transcript),
+    )
 
     db.update(job_id, stage="summarize")
-    digest = await summarize.summarize(sections, transcript, shots)
+    digest = await _asama(
+        work, f"ozet.{prov}",
+        lambda: summarize.summarize(sections, transcript, shots, canli.bolum_ilerleme()),
+    )
 
     # LLM içeriği bir çalışmaya (koleksiyona) otomatik atar — konuya göre.
     koleksiyon = await summarize.classify_collection(
@@ -440,24 +669,44 @@ async def _process_document_long(
     koleksiyon = await summarize.classify_collection(base_title, [], db.distinct_collections())
 
     sem = asyncio.Semaphore(PART_CONCURRENCY)
-    biten = [0]
+    work = WORK_DIR / job_id
+    prov = llm.provider()
+    canli = _Canli(job_id)
+    # Tekrar denemede biten parçalar atlanır (bkz. _process_long).
+    biten = [sum(1 for i in range(n) if (db.get(f"{job_id}p{i + 1}") or {}).get("status") == "done")]
+    db.update(job_id, stage=f"{biten[0]}/{n} parça bitti")
 
     async def _bir(i):
         p_pages = pages[i * per:(i + 1) * per]
         if not p_pages:
             return None
         p_title = f"{base_title} — Part {i + 1} (s.{p_pages[0].number}-{p_pages[-1].number})"
+        cid = f"{job_id}p{i + 1}"
+        ozet_kaydi = f"part{i + 1}.ozet.{prov}"
+        onceki = db.get(cid)
+        if onceki and onceki.get("status") == "done":
+            p_dig = _kayit_oku(work, ozet_kaydi)
+            if p_dig is not None:
+                return ("ok", i, p_title, p_dig)
         async with sem:
             try:
                 p_segs = document.to_segments(p_pages)
                 if not p_segs:
                     return ("hata", i, p_title, "Bu parçada okunabilir sayfa yok (taranmış/karantina).")
                 p_tr = transcribe.to_timestamped_text(p_segs)
-                p_sec = await segment.split_into_sections(p_segs, p_title, p_tr)
-                p_dig = await summarize.summarize(p_sec, p_tr, [])
+                p_sec = await _asama(
+                    work, f"part{i + 1}.bolumler.{prov}",
+                    lambda: segment.split_into_sections(p_segs, p_title, p_tr),
+                )
+                p_dig = await _asama(
+                    work, ozet_kaydi,
+                    lambda: summarize.summarize(
+                        p_sec, p_tr, [], canli.bolum_ilerleme(onek=f"Part {i + 1} · ")
+                    ),
+                )
                 p_md = render.render_document(p_dig, p_title, p_pages, assets_rel)
-                cid = f"{job_id}p{i + 1}"
-                db.create_job(cid, job["source"], None, provider)
+                if onceki is None:
+                    db.create_job(cid, job["source"], None, provider)
                 (OUT_DIR / f"{cid}.md").write_text(p_md, encoding="utf-8")
                 (OUT_DIR / f"{cid}.transcript.txt").write_text(p_tr, encoding="utf-8")
                 await _bitir(
@@ -523,7 +772,7 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     Kurtarılan görsel/sessizlik kavramları PDF'e uymaz (birincil kanal sayfanın
     kendisi) — o alanlar boş kalır, arayüz buna göre uyarlanır.
     """
-    if not pdf.exists():
+    if not pdf.exists() and not _kayit_yolu(work, "sayfalar").exists():
         raise RuntimeError(f"PDF bulunamadı: {pdf}")
 
     # Yükleme orijinal dosya adını başlık yaptıysa koru (yoksa dosya adı = job_id).
@@ -539,9 +788,16 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
         durum["toplam"], durum["islenecek"] = toplam, islenecek
         db.update(job_id, stage=f"pages:{okunan}/{islenecek}")
 
-    pages = await asyncio.to_thread(
-        document.extract, pdf, OUT_DIR / assets_rel, assets_rel, _ilerleme, MAX_PDF_PAGES
-    )
+    async def _sayfalar():
+        p = await asyncio.to_thread(
+            document.extract, pdf, OUT_DIR / assets_rel, assets_rel, _ilerleme, MAX_PDF_PAGES
+        )
+        return {"pages": p, "durum": dict(durum)}
+
+    # Taranmış PDF'in OCR'ı saatler sürebilir: tekrar denemede yeniden yapılmasın.
+    kayit = await _asama(work, "sayfalar", _sayfalar)
+    pages = kayit["pages"]
+    durum.update(kayit["durum"])
     sinirli = 0 < durum["islenecek"] < durum["toplam"]
     segments = document.to_segments(pages)
     if not segments:
@@ -557,18 +813,29 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
         await _process_document_long(
             job_id, db.get(job_id) or {}, pdf, pages, title, assets_rel, sinirli, durum, n_part
         )
-        shutil.rmtree(work, ignore_errors=True)
+        # Düşen parça varsa kayıtlar kalsın: "tekrar dene" yalnız onları işler.
+        if not ((db.get(job_id) or {}).get("meta") or {}).get("parts_failed"):
+            shutil.rmtree(work, ignore_errors=True)
         return
 
     transcript = transcribe.to_timestamped_text(segments)
     transcript_path = OUT_DIR / f"{job_id}.transcript.txt"
     transcript_path.write_text(transcript, encoding="utf-8")
+    prov = llm.provider()
+    canli = _Canli(job_id)
+    canli.transkript(transcript)
 
     db.update(job_id, stage="segment")
-    sections = await segment.split_into_sections(segments, title, transcript)
+    sections = await _asama(
+        work, f"bolumler.{prov}",
+        lambda: segment.split_into_sections(segments, title, transcript),
+    )
 
     db.update(job_id, stage="summarize")
-    digest = await summarize.summarize(sections, transcript, [])
+    digest = await _asama(
+        work, f"ozet.{prov}",
+        lambda: summarize.summarize(sections, transcript, [], canli.bolum_ilerleme()),
+    )
 
     # LLM belgeyi de bir çalışmaya (koleksiyona) otomatik atar — konuya göre.
     koleksiyon = await summarize.classify_collection(
@@ -699,7 +966,8 @@ async def _bitir(job_id: str, **alanlar) -> None:
     Parça işleri de buradan geçer; storage aynı dosyayı iki kez yüklemez.
     """
     await asyncio.to_thread(storage.sync_since, _is_t0)
-    db.update(job_id, status="done", stage="done", **alanlar)
+    # Canlı önizlemenin işi bitti: asıl özet artık hazır (satır da şişmesin).
+    db.update(job_id, status="done", stage="done", canli=None, **alanlar)
 
 
 def _saklama_temizle(job_id: str) -> None:
@@ -865,7 +1133,10 @@ async def retry(job_id: str) -> str | None:
     job = db.get(job_id)
     if job is None:
         return None
-    if job["status"] not in ("error", "cancelled"):
+    # Bitmiş ama bazı parçaları düşmüş uzun iş de yeniden denenebilir: biten
+    # parçalar atlanır (kaldığı yerden devam), yalnız düşenler işlenir.
+    eksik_parca = job["status"] == "done" and (job.get("meta") or {}).get("parts_failed")
+    if job["status"] not in ("error", "cancelled") and not eksik_parca:
         return "not-retryable"
     _user_cancel.discard(job_id)
     db.update(job_id, status="queued", stage="queued", error=None)

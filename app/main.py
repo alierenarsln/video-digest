@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import mimetypes
 import re
 import secrets
@@ -7,6 +8,7 @@ import shutil
 import time
 import uuid
 import zipfile
+from urllib.parse import urlencode
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,7 +25,7 @@ from pydantic import BaseModel
 
 import httpx
 
-from . import auth, db, llm, storage, worker
+from . import auth, db, llm, onkontrol, storage, worker
 from .config import (
     ANTHROPIC_API_KEY,
     OPENROUTER_API_KEY,
@@ -45,7 +47,7 @@ from .config import (
     ensure_dirs,
     provider_available,
 )
-from .pipeline import ask, frames, summarize
+from .pipeline import ask, calisma, frames, summarize
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Ders materyali (interaktif testler + study-pack PDF'leri) repo kökünde durur;
@@ -76,6 +78,9 @@ class JobRequest(BaseModel):
     # "yerel" = ev bilgisayarı (agent faster-whisper ile PC'de yazar, Groq 502 yok,
     # uzun videolar için). "yerel" seçilirse link agent'a yönlenir (m3u8/CDN dahil).
     transkript: str | None = None
+    # Yer imi (bookmarklet) sayfanın başlığını da yollar: m3u8'in kendi adı
+    # ("playlist") anlamsız; kütüphanede ders adı görünsün.
+    baslik: str | None = None
 
 
 class CollectionUpdate(BaseModel):
@@ -204,6 +209,11 @@ async def koruma(request: Request, call_next):
     # Kimliksiz tarayıcı gezinmesi → login sayfası. WWW-Authenticate GÖNDERMİYORUZ
     # (yoksa tarayıcı yine popup açardı). curl zaten Basic'i baştan yolluyor.
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+        # Gidilmek istenen adres girişten sonra geri gelsin: yer imi (bookmarklet)
+        # linki ?url=... ile açar; oturum yoksa o link kaybolmamalı.
+        hedef = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        if hedef != "/":
+            return RedirectResponse("/login?" + urlencode({"sonra": hedef}), status_code=302)
         return RedirectResponse("/login", status_code=302)
     return Response(status_code=401, content="Yetkisiz")
 
@@ -218,18 +228,25 @@ async def index() -> FileResponse:
 async def login_page(request: Request):
     # Zaten girişliyse (ya da koruma kapalıysa) doğrudan uygulamaya.
     if auth.is_open() or _authed(request):
-        return RedirectResponse("/", status_code=302)
+        sonra = request.query_params.get("sonra") or "/"
+        if not sonra.startswith("/") or sonra.startswith("//"):
+            sonra = "/"
+        return RedirectResponse(sonra, status_code=302)
     return FileResponse(STATIC_DIR / "login.html")
 
 
 @app.post("/login", include_in_schema=False)
 async def login_submit(
-    kullanici: str = Form(...), sifre: str = Form(...), hatirla: str | None = Form(None)
+    kullanici: str = Form(...), sifre: str = Form(...), hatirla: str | None = Form(None),
+    sonra: str | None = Form(None),
 ):
+    # Yalnız site içi yol: "//evil.com" ya da tam URL açık yönlendirme olurdu.
+    hedef = sonra if sonra and sonra.startswith("/") and not sonra.startswith("//") else "/"
     if not auth.verify_login(kullanici, sifre):
-        return RedirectResponse("/login?hata=1", status_code=303)
+        ek = f"&{urlencode({'sonra': hedef})}" if hedef != "/" else ""
+        return RedirectResponse(f"/login?hata=1{ek}", status_code=303)
     token, max_age = auth.make_token(bool(hatirla))
-    resp = RedirectResponse("/", status_code=303)
+    resp = RedirectResponse(hedef, status_code=303)
     # httponly: JS okuyamaz (XSS'te çalınamaz); samesite=lax: CSRF'e makul koruma.
     resp.set_cookie(auth.COOKIE, token, max_age=max_age, httponly=True, samesite="lax")
     return resp
@@ -301,21 +318,30 @@ async def usage() -> dict:
     yok → {var:false} (bar gizlenir)."""
     if not OPENROUTER_API_KEY:
         return {"var": False}
+    # HESAP bakiyesi (/credits) esas: anahtarın limiti ($5, "kalan %100") hesapta
+    # para kalmasa da dolu görünüyordu — bar %100 derken her çağrı 402 alıyordu.
+    basliklar = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(
-                "https://openrouter.ai/api/v1/auth/key",
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            kr, ar = await asyncio.gather(
+                c.get("https://openrouter.ai/api/v1/credits", headers=basliklar),
+                c.get("https://openrouter.ai/api/v1/auth/key", headers=basliklar),
             )
-            d = (r.json() or {}).get("data") or {}
+        k = (kr.json() or {}).get("data") or {}
+        a = (ar.json() or {}).get("data") or {}
     except Exception:
         return {"var": False}
-    limit = d.get("limit")
-    rem = d.get("limit_remaining")
-    if limit and rem is not None:
-        return {"var": True, "yuzde": max(0, min(100, round(rem / limit * 100))),
-                "kalan": round(rem, 2), "limit": limit}
-    return {"var": True, "yuzde": None, "kullanilan": d.get("usage")}
+    adaylar = []  # (kalan, toplam): hangisi daha kısıtlıysa o
+    if k.get("total_credits"):
+        adaylar.append((float(k["total_credits"]) - float(k.get("total_usage") or 0),
+                        float(k["total_credits"])))
+    if a.get("limit") and a.get("limit_remaining") is not None:
+        adaylar.append((float(a["limit_remaining"]), float(a["limit"])))
+    if not adaylar:
+        return {"var": True, "yuzde": None, "kullanilan": a.get("usage")}
+    kalan, toplam = min(adaylar, key=lambda x: x[0])
+    return {"var": True, "yuzde": max(0, min(100, round(kalan / toplam * 100))),
+            "kalan": round(max(kalan, 0), 2), "limit": round(toplam, 2)}
 
 
 @app.get("/api/pending-downloads")
@@ -786,8 +812,19 @@ async def create_job(req: JobRequest) -> dict:
 
     job_id = uuid.uuid4().hex[:12]
     kaynak = req.source.strip()
-    db.create_job(job_id, kaynak, req.callback_url or DEFAULT_CALLBACK_URL, secilen)
     ref = (req.referer or "").strip() or None
+    # Kesin bozuk link kuyruğa hiç girmesin (PC kapalıyken saatlerce bekleyip
+    # sonra patlıyordu). Belirsizlikte geçirir; bkz. onkontrol.py.
+    bilgi: dict = {}
+    if kaynak.startswith(("http://", "https://")):
+        try:
+            bilgi = await onkontrol.kontrol(kaynak, ref)
+        except onkontrol.LinkHatasi as exc:
+            raise HTTPException(400, str(exc))
+    db.create_job(job_id, kaynak, req.callback_url or DEFAULT_CALLBACK_URL, secilen)
+    baslik = (bilgi.get("baslik") or req.baslik or "").strip()[:200]
+    if baslik:
+        db.update(job_id, title=baslik)
     if ref:
         db.update(job_id, referer=ref)
     if req.sadece_ses:
@@ -818,6 +855,44 @@ async def get_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(404, "iş bulunamadı")
     return job
+
+
+@app.post("/jobs/{job_id}/calisma")
+async def calisma_uret(job_id: str, yenile: bool = False) -> dict:
+    """Özetten test + bilgi kartları. İlk istekte üretilir (~10-30 sn), sonra DB'den
+    anında gelir; yenile=true yeni bir set üretir."""
+    job = db.get(job_id)
+    if job is None:
+        raise HTTPException(404, "iş bulunamadı")
+    if job["status"] != "done":
+        raise HTTPException(409, "özet henüz hazır değil")
+    anahtar = f"calisma:{job_id}"
+    if not yenile:
+        kayit = db.kv_get(anahtar)
+        if kayit and kayit.get("v"):
+            return json.loads(kayit["v"])
+    md = await asyncio.to_thread(storage.read_text, job["result_path"]) if job.get("result_path") else None
+    if not md:
+        raise HTTPException(404, "özet dosyası bulunamadı")
+    try:
+        secilen, _ = await llm.saglayici_sec(job.get("provider") or llm.provider())
+        llm.set_provider(secilen)
+        veri = await calisma.uret(job.get("title") or "", md)
+    except llm.LLMError as exc:
+        raise HTTPException(502, f"Test üretilemedi: {str(exc)[:300]}")
+    if not veri["sorular"] and not veri["kartlar"]:
+        raise HTTPException(502, "Model kullanılabilir soru üretmedi — tekrar dene.")
+    db.kv_set(anahtar, json.dumps(veri, ensure_ascii=False))
+    return veri
+
+
+@app.get("/jobs/{job_id}/canli")
+async def get_canli(job_id: str) -> dict:
+    """İş sürerken hazır olan ara sonuç: transkript + biten bölüm özetleri. İş
+    düşse de transkript burada kalır (özet adımı düşünce emek kaybolmasın)."""
+    if db.get(job_id) is None:
+        raise HTTPException(404, "iş bulunamadı")
+    return db.canli_oku(job_id) or {}
 
 
 @app.post("/jobs/{job_id}/ask")
@@ -870,7 +945,7 @@ async def retry_job(job_id: str) -> dict:
     if r is None:
         raise HTTPException(404, "iş bulunamadı")
     if r == "not-retryable":
-        raise HTTPException(409, "yalnızca hata/iptal işleri yeniden denenebilir")
+        raise HTTPException(409, "yalnızca hata/iptal ya da parçası düşmüş işler yeniden denenebilir")
     return {"ok": True, "durum": "queued"}
 
 

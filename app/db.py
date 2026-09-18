@@ -57,6 +57,10 @@ def init() -> None:
             ("origin_url", "TEXT"), ("provider", "TEXT"),
             ("collection", "TEXT"), ("referer", "TEXT"), ("audio_only", "INTEGER"),
             ("transkript", "TEXT"), ("claimed_by", "TEXT"),
+            # canli: iş sürerken arayüzün gösterdiği ara sonuç (transkript, biten
+            # bölüm özetleri) — JSON. Blob'a değil DB'ye: Blob'un aylık işlem
+            # kotası küçük, önizleme sık yazılır. İş bitince silinir.
+            ("canli", "TEXT"),
         ):
             if ad not in var:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {ad} {tanim}")
@@ -175,7 +179,21 @@ def get(job_id: str) -> Optional[dict]:
         return None
     job = dict(row)
     job["meta"] = json.loads(job["meta"]) if job["meta"] else None
+    # Önizleme büyük olabilir (transkript); iş yoklamasına binmesin, ayrı uçtan.
+    job.pop("canli", None)
     return job
+
+
+def canli_yaz(job_id: str, veri: dict | None) -> None:
+    update(job_id, canli=json.dumps(veri, ensure_ascii=False) if veri else None)
+
+
+def canli_oku(job_id: str) -> Optional[dict]:
+    with _conn() as conn:
+        row = conn.execute("SELECT canli FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row or not row["canli"]:
+        return None
+    return json.loads(row["canli"])
 
 
 def list_jobs(limit: int = 50) -> list[dict]:

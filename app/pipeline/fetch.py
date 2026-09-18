@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import ENABLE_FRAMES, VIDEO_MAX_HEIGHT, YTDLP
-from . import subtitles
+from . import subtitles, transcribe
 from .transcribe import Segment
 
 
@@ -102,6 +102,39 @@ def _find_download(work: Path) -> Path:
     return max(candidates, key=lambda p: p.stat().st_size)
 
 
+def onkontrol_canli(info: dict) -> None:
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise RuntimeError("Ön kontrol: bu bir canlı yayın (ya da henüz başlamadı) — "
+                           "yayın bitip kayda dönüşünce tekrar gönder.")
+
+
+def onkontrol(info: dict, work: Path, video_iste: bool) -> None:
+    """İNDİRMEDEN ÖNCE: bu iş sonuna kadar gidebilir mi? Gidemeyecekse şimdi,
+    tek satırlık bir sebeple dur — eskiden video indirilip dakikalar harcandıktan
+    sonra patlıyordu (israf). Bilgi zaten elde (yt-dlp -J), maliyeti sıfır."""
+    onkontrol_canli(info)
+    for arac in ("ffmpeg", "ffprobe"):
+        if shutil.which(arac) is None:
+            raise RuntimeError(f"Ön kontrol: {arac} bu bilgisayarda yok — medya işlenemez.")
+    if subtitles.pick(info) is None and not transcribe.kullanilabilir():
+        raise RuntimeError("Ön kontrol: videonun altyazısı yok ve transkript için ne "
+                           "Groq anahtarı ne yerel Whisper var — indirilmeden durduruldu.")
+    # Disk: indirilecek boyut + 16 kHz WAV (32 KB/sn) + pay. Boyut bilinmiyorsa geç.
+    boyut = info.get("filesize") or info.get("filesize_approx") or 0
+    if not boyut:
+        for f in info.get("requested_formats") or []:
+            boyut += f.get("filesize") or f.get("filesize_approx") or 0
+    if not video_iste:
+        boyut = boyut // 4  # yalnız ses iner
+    gerekli = int(boyut * 1.3) + int((info.get("duration") or 0) * 32_000)
+    bos = shutil.disk_usage(work).free
+    if gerekli and bos < gerekli:
+        raise RuntimeError(
+            f"Ön kontrol: diskte yer yok — gereken ~{gerekli / 1e9:.1f} GB, boş "
+            f"{bos / 1e9:.1f} GB. Yer açıp tekrar dene."
+        )
+
+
 async def from_url(
     url: str, work: Path, referer: str | None = None, audio_only: bool = False
 ) -> Source:
@@ -116,6 +149,7 @@ async def from_url(
     )
 
     video_iste = ENABLE_FRAMES and not audio_only
+    onkontrol(info, work, video_iste)
     if video_iste:
         # Slayt OCR'ı için görüntü lazım; çözünürlüğü sınırlıyoruz — 720p
         # slayt metnini okumaya fazlasıyla yeter, indirme süresini kısaltır.
