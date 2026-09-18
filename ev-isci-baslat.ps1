@@ -42,5 +42,6 @@ if (-not (Test-Path $py)) { throw "Python bulunamadi: $py" }
 New-Item -ItemType Directory -Force "data-ev" | Out-Null
 $env:PYTHONIOENCODING = "utf-8"
 $log = Join-Path $PSScriptRoot "data-ev\ev-isci.log"
-Add-Content $log ("`n===== " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + " basladi =====")
-& $py -u ev-isci.py *>> $log
+# Yonlendirme cmd'de: PowerShell 5.1'in *>> yonlendirmesi dosyayi UTF-16 yazar
+# (Python'un UTF-8 ciktisi harf aralikli, okunmaz hale gelir). cmd baytlari aynen yazar.
+cmd /c "echo ===== %DATE% %TIME% basladi =====>> `"$log`" & `"$py`" -u ev-isci.py >> `"$log`" 2>&1"
