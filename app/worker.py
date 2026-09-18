@@ -9,7 +9,7 @@ import shutil
 import time
 import traceback
 
-from . import db, llm, notify
+from . import db, llm, notify, storage
 from .config import (
     DELETE_SOURCE_AFTER_DONE,
     MAX_PDF_PAGES,
@@ -756,7 +756,7 @@ async def _run_one(job_id: str) -> None:
             "status": "done",
             "title": job.get("title"),
             "markdown": (job.get("result_path") and
-                         open(job["result_path"], encoding="utf-8").read()),
+                         storage.read_text(job["result_path"])),
             "meta": job.get("meta"),
         }
     except Exception as exc:
@@ -766,6 +766,16 @@ async def _run_one(job_id: str) -> None:
         db.update(job_id, status="error", stage="error", error=aciklama)
         shutil.rmtree(WORK_DIR / job_id, ignore_errors=True)
         payload = {"job_id": job_id, "status": "error", "error": aciklama}
+
+    # Vercel: bu işte üretilen çıktıları (ana iş + parça işleri + görseller)
+    # geçici diskten kalıcı Blob'a kopyala. Hatada da: hatadan önce biten parçalar
+    # kaybolmasın. Coolify'da (token yok) no-op.
+    try:
+        n = await asyncio.to_thread(storage.sync_since, t0)
+        if n:
+            print(f"[blob] {job_id}: {n} dosya yuklendi", flush=True)
+    except Exception as exc:
+        print(f"[blob] {job_id} senkron HATA: {exc!r}", flush=True)
 
     job = db.get(job_id) or {}
     if job.get("callback_url"):
