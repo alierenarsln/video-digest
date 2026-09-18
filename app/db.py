@@ -1,11 +1,10 @@
 import json
-import sqlite3
 import time
 from typing import Any, Optional
 
-from .config import DB_PATH
+from .dbconn import FLOAT, IS_PG, connect as _conn
 
-SCHEMA = """
+SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS jobs (
     id           TEXT PRIMARY KEY,
     status       TEXT NOT NULL,
@@ -21,25 +20,30 @@ CREATE TABLE IF NOT EXISTS jobs (
     error        TEXT,
     result_path  TEXT,
     meta         TEXT,
-    created_at   REAL NOT NULL,
-    updated_at   REAL NOT NULL
-);
+    created_at   {FLOAT} NOT NULL,
+    updated_at   {FLOAT} NOT NULL
+)
 """
 
 
-def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _columns(conn) -> set[str]:
+    if IS_PG:
+        rows = conn.execute(
+            "SELECT column_name AS name FROM information_schema.columns"
+            " WHERE table_name = 'jobs'"
+        )
+    else:
+        rows = conn.execute("PRAGMA table_info(jobs)")
+    return {r["name"] for r in rows}
 
 
 def init() -> None:
     with _conn() as conn:
-        conn.executescript(SCHEMA)
+        conn.execute(SCHEMA)
 
         # CREATE TABLE IF NOT EXISTS mevcut tabloya yeni sütun EKLEMEZ; şema
         # büyüdükçe eski kurulumlar sessizce kırılır (SELECT/UPDATE hata verir).
-        var = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+        var = _columns(conn)
         # collection: LLM'in otomatik atadığı çalışma/konu adı (koleksiyon).
         # referer: CDN'den (Bunny gibi) sunucu-tarafı indirmede gereken kaynak site.
         # audio_only: "sadece ses" seçildiyse 1 — video indirilmez, OCR atlanır.

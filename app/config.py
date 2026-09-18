@@ -194,6 +194,12 @@ OUT_DIR = DATA_DIR / "out"
 # yüklediğiniz video internete açılırdı.
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "jobs.sqlite3"
+# Postgres (Vercel + Neon): tanımlıysa SQLite yerine kullanılır (bkz. dbconn.py).
+# Vercel'de kalıcı disk yok — SQLite dosyası her çağrıda kaybolurdu. Coolify'da
+# boş kalır ve volume'daki SQLite aynen çalışmaya devam eder.
+DATABASE_URL = (
+    os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or ""
+).strip()
 
 # Uzun video parçalama: süre ~PART_SECONDS'ı belirgin aşarsa video part'lara
 # bölünüp her part AYRI özetlenir (derin part özeti + ayrı kütüphane girdisi),
