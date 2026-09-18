@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -296,3 +297,9 @@ MAX_FRAMES = _int("MAX_FRAMES", 80)
 def ensure_dirs() -> None:
     for d in (DATA_DIR, WORK_DIR, OUT_DIR, UPLOAD_DIR):
         d.mkdir(parents=True, exist_ok=True)
+
+# yt-dlp'yi komut ADIYLA değil, çalışan Python'un modülü olarak çağır. Ev işçisi
+# venv'i etkinleştirmeden python.exe ile koşuyor: venv\Scripts PATH'te değil,
+# 'yt-dlp' bulunamıyor ve HER link işi [WinError 2] ile düşüyordu (ölçümde
+# yakalandı). -m yt_dlp venv'de, Docker'da, her yerde aynı çalışır.
+YTDLP = (sys.executable, "-m", "yt_dlp")

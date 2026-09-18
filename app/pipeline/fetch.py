@@ -11,7 +11,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..config import ENABLE_FRAMES, VIDEO_MAX_HEIGHT
+from ..config import ENABLE_FRAMES, VIDEO_MAX_HEIGHT, YTDLP
 from . import subtitles
 from .transcribe import Segment
 
@@ -36,6 +36,25 @@ async def _run(*cmd: str) -> str:
         tail = stderr.decode("utf-8", "replace")[-2000:]
         raise RuntimeError(f"{cmd[0]} başarısız (kod {proc.returncode}):\n{tail}")
     return stdout.decode("utf-8", "replace")
+
+# YouTube ARA SIRA "Sign in to confirm you're not a bot" diyor (ölçüldü: aynı video
+# bir dakika sonra sorunsuz iniyor — geçici). İşi hemen düşürme; bekleyip yeniden dene.
+_BOT_IMZA = ("sign in to confirm", "not a bot")
+_BOT_BEKLE = (20, 60)
+
+
+async def _ytdlp(*args: str) -> str:
+    for i in range(len(_BOT_BEKLE) + 1):
+        try:
+            return await _run(*YTDLP, *args)
+        except RuntimeError as exc:
+            if i == len(_BOT_BEKLE) or not any(b in str(exc).lower() for b in _BOT_IMZA):
+                raise
+            print(f"[fetch] YouTube bot kontrolu — {_BOT_BEKLE[i]} sn sonra yeniden "
+                  f"({i + 1}/{len(_BOT_BEKLE)})", flush=True)
+            await asyncio.sleep(_BOT_BEKLE[i])
+    raise AssertionError("ulasilmaz")
+
 
 
 async def _to_wav(src: Path, dst: Path) -> None:
@@ -93,7 +112,7 @@ async def from_url(
     # eğitici bir şey yoksa (konuşan kafa/podcast) hem daha hızlı hem OCR gürültüsü yok.
     ref = ["--referer", referer] if referer else []
     info = json.loads(
-        await _run("yt-dlp", *ref, "--dump-single-json", "--no-playlist", "--no-warnings", url)
+        await _ytdlp(*ref, "--dump-single-json", "--no-playlist", "--no-warnings", url)
     )
 
     video_iste = ENABLE_FRAMES and not audio_only
@@ -104,8 +123,8 @@ async def from_url(
             f"bestvideo[height<={VIDEO_MAX_HEIGHT}]+bestaudio/"
             f"best[height<={VIDEO_MAX_HEIGHT}]/best"
         )
-        await _run(
-            "yt-dlp", *ref, "--no-playlist", "--no-warnings",
+        await _ytdlp(
+            *ref, "--no-playlist", "--no-warnings",
             "-f", fmt, "--merge-output-format", "mp4",
             "-o", str(work / "download.%(ext)s"), url,
         )
@@ -115,8 +134,8 @@ async def from_url(
         # "Postprocessing: audio conversion failed" ile çöküyordu (ffmpeg AAC re-encode).
         # Gereksiz de: bir alttaki _to_wav zaten 16kHz WAV'a çeviriyor → native indirip
         # tek dönüşümle hallediyoruz, kırılgan ara adım kalkıyor (daha sağlam).
-        await _run(
-            "yt-dlp", *ref, "--no-playlist", "--no-warnings",
+        await _ytdlp(
+            *ref, "--no-playlist", "--no-warnings",
             "-f", "bestaudio/best",
             "-o", str(work / "download.%(ext)s"), url,
         )

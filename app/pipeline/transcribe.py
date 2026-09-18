@@ -49,7 +49,10 @@ async def _split(audio: Path, work: Path) -> list[tuple[Path, float]]:
     format.duration alanı bulunmuyor ve ölçüm KeyError ile çöküyordu — üstelik
     bu yalnızca çok parçalı işlerde, yani 10 dakikadan uzun her videoda oluyordu.
     """
-    chunk_dir = work / "chunks"
+    # Ses dosyasına ÖZEL klasör: uzun videoda parçalar PARALEL transkript edilir ve
+    # hepsi aynı "chunks/chunk_0000.flac" adlarına yazınca birbirinin sesini
+    # eziyordu — bir parçanın transkriptine başka parçanın konuşması karışabilirdi.
+    chunk_dir = work / "chunks" / audio.stem
     chunk_dir.mkdir(parents=True, exist_ok=True)
     listfile = chunk_dir / "segments.csv"
 
@@ -162,7 +165,40 @@ async def _transcribe_chunk(
     )
 
 
+def _onbellek_yolu(audio: Path) -> Path:
+    return audio.with_name(audio.name + ".segs.json")
+
+
+def _onbellekten(audio: Path) -> list[Segment] | None:
+    """Aynı ses için daha önce çıkarılmış transkript (tekrar denemede yeniden kullan:
+    iş özet adımında düşse bile transkript yeniden ÜCRET/SÜRE harcamasın)."""
+    yol = _onbellek_yolu(audio)
+    try:
+        veri = json.loads(yol.read_text(encoding="utf-8"))
+        if veri.get("boyut") != audio.stat().st_size:
+            return None
+        return [Segment(s["start"], s["end"], s["text"]) for s in veri["segs"]]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 async def transcribe(audio: Path, work: Path) -> list[Segment]:
+    hazir = _onbellekten(audio)
+    if hazir:
+        print(f"[transcribe] {audio.name}: onbellekten ({len(hazir)} segment)", flush=True)
+        return hazir
+    segs = await _transcribe(audio, work)
+    try:
+        _onbellek_yolu(audio).write_text(json.dumps({
+            "boyut": audio.stat().st_size,
+            "segs": [{"start": s.start, "end": s.end, "text": s.text} for s in segs],
+        }, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return segs
+
+
+async def _transcribe(audio: Path, work: Path) -> list[Segment]:
     if not _groq_keys():
         raise RuntimeError("GROQ_API_KEY tanımlı değil.")
 

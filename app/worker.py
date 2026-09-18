@@ -257,6 +257,9 @@ async def _process(job_id: str) -> None:
     # Sağlayıcı iş başına seçiliyor (arayüzden). Pencere boyutları buna bağlı
     # olduğu için boru hattı başlamadan ÖNCE ayarlanmalı.
     llm.set_provider(job.get("provider") or llm.provider())
+    # Özet anahtarı pahalı adımlardan ÖNCE doğrulansın (bkz. llm.anahtar_kontrol):
+    # geçersizse iş saniyeler içinde, hiçbir şey indirilmeden/harcanmadan durur.
+    await llm.anahtar_kontrol()
 
     work = WORK_DIR / job_id
     work.mkdir(parents=True, exist_ok=True)
@@ -742,8 +745,9 @@ def _hata_acikla(exc: Exception) -> str:
              "Öneri: birkaç dakika bekleyip tekrar dene; ya da arayüzden farklı "
              "sağlayıcı seç (OpenRouter/Gemini/Groq).")
     elif "sign in to confirm" in dl or ("youtube" in dl and "bot" in dl):
-        a = ("YouTube bu IP'yi bot sanıp engelledi (veri-merkezi IP'si). Sunucu "
-             "YouTube indiremez; ev-agent'ı (agent.ps1) gerekir — link işleri onu bekler.")
+        a = ("YouTube geçici bir 'bot kontrolü' yaptı; 3 kez aralıklı denendi, geçmedi. "
+             "Genelde birkaç dakika sonra kendiliğinden kalkar: 'tekrar dene'. Sürekli "
+             "oluyorsa yt-dlp güncellenmeli (ev bilgisayarında).")
     elif "postprocessing" in dl or "conversion failed" in dl or "audio conversion" in dl:
         a = ("Video İNDİ ama yt-dlp'nin ses dönüştürme adımı (ffmpeg) başarısız oldu — "
              "indirme değil, işleme sorunu (link/referer ile ilgisi yok). Genelde 'sadece "
@@ -765,8 +769,27 @@ def _hata_acikla(exc: Exception) -> str:
     return f"{ham}\n\nBu ne demek: {a}" if a else ham
 
 
+_CALISMA_OMRU_SN = 3 * 86400
+
+
+def _eski_calismalari_temizle(haric: str) -> None:
+    """Hata alıp tekrar denenmeyen işlerin çalışma klasörleri (indirilmiş video
+    dahil) 3 gün sonra silinir; disk sessizce şişmesin."""
+    if not WORK_DIR.exists():
+        return
+    sinir = time.time() - _CALISMA_OMRU_SN
+    for d in WORK_DIR.iterdir():
+        try:
+            if d.is_dir() and d.name != haric and d.stat().st_mtime < sinir:
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"[saklama] eski calisma klasoru silindi: {d.name}", flush=True)
+        except OSError:
+            pass
+
+
 async def _run_one(job_id: str) -> None:
     t0 = time.time()  # işlenme süresi: kuyruk beklemesi HARİÇ, running→done
+    _eski_calismalari_temizle(job_id)
     global _is_t0
     _is_t0 = t0
     try:
@@ -792,7 +815,10 @@ async def _run_one(job_id: str) -> None:
         # Hatayı LLM'le paylaşılabilir açıklamayla zenginleştir (ne demek + öneri).
         aciklama = _hata_acikla(exc)
         db.update(job_id, status="error", stage="error", error=aciklama)
-        shutil.rmtree(WORK_DIR / job_id, ignore_errors=True)
+        # Çalışma klasörü KALIR: "tekrar dene" indirilmiş medyayı (yt-dlp mevcut
+        # dosyayı atlar) ve transkripti (transcribe önbelleği) yeniden kullansın —
+        # eskiden hata sonrası her şey baştan yapılıyordu (israf). Eskiyenleri
+        # _eski_calismalari_temizle siler.
         payload = {"job_id": job_id, "status": "error", "error": aciklama}
 
     # Vercel: bu işte üretilen çıktıları (ana iş + parça işleri + görseller)

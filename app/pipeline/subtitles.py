@@ -21,7 +21,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from ..config import ALLOW_AUTO_SUBTITLES, SUBTITLE_LANGS, USE_SUBTITLES
+from ..config import ALLOW_AUTO_SUBTITLES, SUBTITLE_LANGS, USE_SUBTITLES, YTDLP
 from .transcribe import Segment
 
 
@@ -74,7 +74,7 @@ def pick(info: dict) -> tuple[str, bool] | None:
 async def download(url: str, lang: str, is_auto: bool, work: Path) -> list[Segment]:
     flag = "--write-auto-subs" if is_auto else "--write-subs"
     proc = await asyncio.create_subprocess_exec(
-        "yt-dlp", "--no-playlist", "--no-warnings", "--skip-download",
+        *YTDLP, "--no-playlist", "--no-warnings", "--skip-download",
         flag, "--sub-langs", lang, "--sub-format", "json3",
         "-o", str(work / "subs.%(ext)s"), url,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,

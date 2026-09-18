@@ -8,7 +8,7 @@ uvicorn[standard]>=0.34
 pydantic>=2.10
 httpx>=0.28
 anthropic>=0.116
-yt-dlp>=2025.6.9
+yt-dlp>=2026.8.19
 python-dotenv>=1.0.1
 
 # Görsel katman (Faz 2).

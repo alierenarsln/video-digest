@@ -406,3 +406,56 @@ async def complete_json(
             raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")
         return await _gemini_json(system, user, schema, effort, max_tokens)
     raise LLMError(f"Bilinmeyen sağlayıcı: {aktif}")
+
+
+# --- Erken anahtar kontrolü --------------------------------------------------
+# Pahalı adımlardan (indirme, transkript, OCR) ÖNCE: özet sağlayıcısının anahtarı
+# geçerli mi? Eskiden geçersiz anahtar ancak özet adımında, 10+ dk emek harcandıktan
+# sonra "Okuyamadım" diye patlıyordu (israf). Kontrol token HARCAMAZ (anahtar/model
+# listeleme uçları). Yalnız KESİN red (401/403) işi durdurur; ağ kesintisi vb.
+# belirsizlikte engellemez. Başarı 10 dk önbellekte.
+_ANAHTAR_OK: dict[str, float] = {}
+_ANAHTAR_OK_SN = 600
+
+
+def _anahtar_istegi(ad: str) -> tuple[str, dict[str, str]] | None:
+    if ad == "openrouter" and OPENROUTER_API_KEY:
+        return f"{OPENROUTER_BASE_URL}/key", {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+    if ad == "groq" and GROQ_API_KEY:
+        return f"{GROQ_BASE_URL}/models", {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    if ad == "gemini" and GEMINI_API_KEY:
+        return f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}", {"x-goog-api-key": GEMINI_API_KEY}
+    if ad == "anthropic" and ANTHROPIC_API_KEY:
+        return "https://api.anthropic.com/v1/models", {
+            "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"}
+    return None
+
+
+async def anahtar_kontrol(ad: str | None = None) -> None:
+    """Sağlayıcı anahtarı kesin geçersiz/eksikse LLMError; aksi halde sessizce döner."""
+    import time as _time
+
+    ad = ad or provider()
+    if _time.time() - _ANAHTAR_OK.get(ad, 0) < _ANAHTAR_OK_SN:
+        return
+    istek = _anahtar_istegi(ad)
+    if istek is None:
+        raise LLMError(
+            f"Özet sağlayıcısı '{ad}' için anahtar yok — iş, hiçbir şey harcanmadan "
+            f"durduruldu. Ev bilgisayarındaki .env'e anahtarı ekle ya da başka bir "
+            f"sağlayıcıyla tekrar gönder."
+        )
+    url, basliklar = istek
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(url, headers=basliklar)
+    except httpx.HTTPError:
+        return  # ağ belirsizliği: engelleme, asıl çağrı kendi hatasını verir
+    if r.status_code in (401, 403):
+        raise LLMError(
+            f"Özet sağlayıcısı '{ad}' anahtarı GEÇERSİZ (HTTP {r.status_code}) — iş, "
+            f"indirme/transkript yapılmadan durduruldu; hiçbir şey harcanmadı. Ev "
+            f"bilgisayarındaki .env'de anahtarı düzelt ya da başka sağlayıcıyla gönder."
+        )
+    if r.status_code == 200:
+        _ANAHTAR_OK[ad] = _time.time()
