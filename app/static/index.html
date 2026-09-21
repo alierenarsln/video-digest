@@ -782,10 +782,14 @@ function isHtml(j) {
   const etiket = j.status === "done" ? "hazır"
     : j.status === "error" ? "hata"
     : j.status === "cancelled" ? "iptal" : asamaAdi(j.stage);
-  const ad = gorunenAd(j);
+  // Uzun videonun "Tüm hali" ve parçaları aynı başlıkla başlıyor; ad kesilince üçü
+  // aynı görünüyordu. Parça ekini ("Part 1 (0-35dk)" / "Tüm hali") alt satıra al.
+  let ad = gorunenAd(j), parca = "";
+  const m = ad.match(/^(.*) — (Part \d+ \([^)]*\)|Tüm hali)$/);
+  if (m) { ad = m[1]; parca = m[2]; }
   return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
-    <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}</div>
+    <div class="alt"><span class="nokta" style="background:${renk}"></span>${esc(etiket)}${parca ? ` · <b>${esc(parca)}</b>` : ""}</div>
   </button>`;
 }
 
@@ -1323,17 +1327,27 @@ async function kitaplikGoster() {
 }
 $("#kitaplikBtn").onclick = kitaplikGoster;
 
+// Her goster() çağrısı bir "açılış numarası" alır. Önceki iş yüklenirken başka
+// bir işe tıklanınca eskisinin yenileme zamanlayıcısı kapanmadan kalıyordu (await
+// ciz() sırasında): biriken zamanlayıcılar bitmiş özeti 2,5 sn'de bir yeniden
+// çizip ekranı yanıp söndürüyordu (canlıda yaşandı, yerelde üretildi). Artık her
+// zamanlayıcı kendi numarasına bakar; eskimişse kendini kapatır.
+let _acilisNo = 0;
 async function goster(id) {
+  const no = ++_acilisNo;
   _durumYaz("icerik", id);
   secili = id;
   clearInterval(zamanlayici);
   ekran("icerik");
-  await ciz();
+  const bitti = await ciz(id);
+  if (no !== _acilisNo) return;  // bu arada başka bir iş açıldı
   listele();
-  zamanlayici = setInterval(async () => {
-    const bitti = await ciz();
-    if (bitti) { clearInterval(zamanlayici); listele(); }
+  if (bitti) return;  // hazır/hatalı iş: yoklamaya gerek yok
+  const zid = setInterval(async () => {
+    if (no !== _acilisNo) { clearInterval(zid); return; }
+    if (await ciz(id)) { clearInterval(zid); listele(); }
   }, 2500);
+  zamanlayici = zid;
 }
 
 // ── canlı önizleme ──────────────────────────────────────────────
@@ -1363,8 +1377,10 @@ async function canliCiz(j, zorla) {
       <pre>${esc(d.transkript)}</pre></details>` : ""}`;
 }
 
-async function ciz() {
-  const j = await (await fetch(`/jobs/${secili}`)).json();
+async function ciz(id = secili) {
+  const j = await (await fetch(`/jobs/${id}`)).json();
+  // Yanıt gelene kadar başka iş açıldıysa eski işi çizme (üstüne yazardı).
+  if (id !== secili) return true;
   // Sohbet yalnızca hazır işte anlamlı: transkript diske ancak "done"da yazılıyor.
   $("#sor").style.display = "none";
   $("#calisma").style.display = "none";
@@ -1474,7 +1490,9 @@ async function ciz() {
     };
   }
 
-  $("#ozet").innerHTML = md(await (await fetch(`/jobs/${secili}/markdown`)).text(), secili);
+  const metin = await (await fetch(`/jobs/${id}/markdown`)).text();
+  if (id !== secili) return true;  // özet inerken başka iş açıldı
+  $("#ozet").innerHTML = md(metin, id);
   enstrumanla($("#ozet"));
   kopyaButonlari($("#ozet"));
   calismaKur(j);
