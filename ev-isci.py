@@ -132,28 +132,59 @@ async def _isle(jid: str) -> None:
     _log(f"{jid} bitti: {son.get('status')} ({(son.get('title') or '')[:60]})")
 
 
+AG_BEKLE = (5, 15, 30, 60)  # sn: ağ yokken artan bekleme (sonuncusu tekrarlanır)
+
+
+async def _db_hazir() -> None:
+    """Açılışta ağ henüz yoksa (PC uykudan/açılıştan yeni kalktı) bekle, çökme.
+    Eskiden ilk DNS hatasında süreç kapanıyor ve bir daha açılmıyordu — arayüz
+    günlerce 'ev PC kapalı' dedi (yaşandı: 18.09 ve 21.09)."""
+    i = 0
+    while True:
+        try:
+            await asyncio.to_thread(db.init)
+            return
+        except Exception as exc:
+            bekle = AG_BEKLE[min(i, len(AG_BEKLE) - 1)]
+            i += 1
+            _log(f"veritabanina ulasilamadi ({str(exc)[:100]}), {bekle} sn sonra yeniden")
+            await asyncio.sleep(bekle)
+
+
 async def main() -> None:
     ensure_dirs()
-    db.init()
+    await _db_hazir()
     _log(f"basladi ({KIMLIK}) — Neon + Blob, is bekleniyor")
     kalp = asyncio.create_task(_kalp_atisi())
     son_bakim = 0.0
     aktif: str | None = None
+    ag_hata = 0
     try:
         while True:
-            if time.time() - son_bakim > 60:
-                geri = await asyncio.to_thread(db.requeue_stale, KIRA)
-                for g in geri:
-                    _log(f"{g} sahipsiz kalmis (kira doldu), siraya geri kondu")
-                son_bakim = time.time()
-            aktif = await asyncio.to_thread(db.claim_next, KIMLIK)
-            if not aktif:
-                await asyncio.sleep(BOSTA_BEKLE)
-                continue
-            is_ = db.get(aktif) or {}
-            _log(f"{aktif} kapildi: {(is_.get('title') or is_.get('source') or '')[:80]}")
-            await _isle(aktif)
-            aktif = None
+            # Ağ kopması (uyku/uyanma, modem) döngüyü ÖLDÜRMESİN: eskiden
+            # claim_next'teki tek bir DNS hatası süreci kapatıyordu.
+            try:
+                if time.time() - son_bakim > 60:
+                    geri = await asyncio.to_thread(db.requeue_stale, KIRA)
+                    for g in geri:
+                        _log(f"{g} sahipsiz kalmis (kira doldu), siraya geri kondu")
+                    son_bakim = time.time()
+                aktif = await asyncio.to_thread(db.claim_next, KIMLIK)
+                ag_hata = 0
+                if not aktif:
+                    await asyncio.sleep(BOSTA_BEKLE)
+                    continue
+                is_ = db.get(aktif) or {}
+                _log(f"{aktif} kapildi: {(is_.get('title') or is_.get('source') or '')[:80]}")
+                await _isle(aktif)
+                aktif = None
+            except Exception as exc:
+                # İş kendi hatasını _run_one'da zaten yakalayıp DB'ye yazar; buraya
+                # yalnız DB/ağ hataları düşer. Yarım kalan iş kira dolunca sıraya döner.
+                bekle = AG_BEKLE[min(ag_hata, len(AG_BEKLE) - 1)]
+                ag_hata += 1
+                _log(f"is kuyruguna ulasilamadi ({str(exc)[:100]}), {bekle} sn sonra yeniden")
+                await asyncio.sleep(bekle)
     finally:
         kalp.cancel()
         # Ctrl+C ile kapatılırken yarım kalan işi hemen sıraya geri koy (kiranın

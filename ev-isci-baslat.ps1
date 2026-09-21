@@ -8,6 +8,7 @@
 # - Neon + Blob erisimi .env.vercel'den (vercel env pull ile gelir).
 # - Iki kopya ayni anda calismasin: global mutex (agent.ps1 ile ayni desen).
 # - Cikti: data-ev\ev-isci.log
+# - Surec kapanirsa 30 sn sonra kendiliginden yeniden baslar (bekci dongusu).
 #
 # NOT: Bu dosya bilerek ASCII. BOM'suz .ps1 PowerShell 5.1'de ANSI okunur,
 # Turkce karakterler bozulur.
@@ -44,4 +45,12 @@ $env:PYTHONIOENCODING = "utf-8"
 $log = Join-Path $PSScriptRoot "data-ev\ev-isci.log"
 # Yonlendirme cmd'de: PowerShell 5.1'in *>> yonlendirmesi dosyayi UTF-16 yazar
 # (Python'un UTF-8 ciktisi harf aralikli, okunmaz hale gelir). cmd baytlari aynen yazar.
-cmd /c "echo ===== %DATE% %TIME% basladi =====>> `"$log`" & `"$py`" -u ev-isci.py >> `"$log`" 2>&1"
+# Bekci: surec herhangi bir sebeple kapanirsa (ag kopmasi, beklenmedik hata)
+# 30 sn sonra yeniden baslat. Eskiden tek bir DNS hatasi isciyi kalici olarak
+# durduruyordu ve arayuz gunlerce "ev PC kapali" diyordu.
+while ($true) {
+    cmd /c "echo ===== %DATE% %TIME% basladi =====>> `"$log`" & `"$py`" -u ev-isci.py >> `"$log`" 2>&1"
+    $kod = $LASTEXITCODE
+    cmd /c "echo ===== %DATE% %TIME% kapandi (kod $kod), 30 sn sonra yeniden =====>> `"$log`""
+    Start-Sleep -Seconds 30
+}
