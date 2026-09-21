@@ -770,8 +770,7 @@ async function kullanimGuncelle() {
     const renk = u.yuzde > 20 ? "var(--sig-verified)" : "var(--accent)";
     el.innerHTML = `kalan <span class="bar"><i style="width:${u.yuzde}%;background:${renk}"></i></span>%${u.yuzde}`;
     el.title = `OpenRouter bakiyesi: $${u.kalan} / $${u.limit}` +
-      (u.yuzde < 2 ? "
-Bitti — özetler başka modelle (daha yavaş) yapılıyor." : "");
+      (u.yuzde < 2 ? " — bitti; özetler başka modelle yapılıyor." : "");
   } catch { /* alınamadıysa olduğu gibi bırak */ }
 }
 
