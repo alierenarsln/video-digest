@@ -45,7 +45,11 @@ def safe_rel(rel: str) -> str | None:
 def _rel_of(path) -> str:
     """Bir çıktı yolunun OUT_DIR'e göre göreli hali. Başka makinenin mutlak yolu
     (ör. Coolify'dan gelen result_path) ise yalnız dosya adı alınır."""
-    p = Path(path)
+    # Windows yolu Linux'ta (Vercel) TEK bir dosya adı sanılıyordu: ev işçisinin
+    # yazdığı "C:\...\out\<id>.md" → Path.name tüm dizeyi döndürüyor, safe_rel
+    # "C:" yüzünden reddediyordu → ev işçisinin işlediği HER özet sitede "özet
+    # dosyası bulunamadı" verdi (yaşandı). Ayraçları önce normalleştir.
+    p = Path(str(path).replace("\\", "/"))
     try:
         return p.resolve().relative_to(OUT_DIR.resolve()).as_posix()
     except ValueError:
