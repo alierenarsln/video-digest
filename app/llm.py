@@ -11,6 +11,7 @@ Her iki yol da şemaya uyması garantili JSON döndürür — çağıran taraf f
 """
 
 import asyncio
+import time
 import json
 import re
 from contextvars import ContextVar
@@ -419,8 +420,12 @@ async def _gemini_json(
         },
     }
     global _gemini_iyi
-    # Son çalışan modelden başla (aşırı yüklü modeli her çağrıda yeniden deneme).
-    sira = [_gemini_iyi] + [m for m in GEMINI_MODELS if m != _gemini_iyi] if _gemini_iyi else list(GEMINI_MODELS)
+    # Son çalışan modelden başla; kapalı/kotası dolu bilinen modeli hiç deneme.
+    # Ölçüldü: kota dolunca HER çağrı önce 2 dolu + 1 kapalı modele gidip 3 boş
+    # istek harcıyordu (150 sayfalık kitapta 60+ gereksiz istek).
+    simdi = time.time()
+    uygun = [m for m in GEMINI_MODELS if _gemini_kapali.get(m, 0) <= simdi] or list(GEMINI_MODELS)
+    sira = [_gemini_iyi] + [m for m in uygun if m != _gemini_iyi] if _gemini_iyi in uygun else uygun
     hatalar = []
     async with google_istemci(timeout=600) as client:
         for model in sira:
@@ -428,7 +433,12 @@ async def _gemini_json(
                 sonuc = await _gemini_model(client, model, payload)
             except _SonrakiModel as exc:
                 hatalar.append(f"{model}: {exc}")
-                print(f"[llm] gemini {model} olmadi ({str(exc)[:90]}) -> siradaki model", flush=True)
+                neden = str(exc)
+                # Ne kadar süre denenmesin: kapalı model bir gün, günlük kota bir
+                # saat (sonra yoklanır), aşırı yük iki dakika.
+                _gemini_kapali[model] = simdi + (86400 if "404" in neden else
+                                                 3600 if "günlük" in neden else 120)
+                print(f"[llm] gemini {model} olmadi ({neden[:90]}) -> siradaki model", flush=True)
                 continue
             _gemini_iyi = model
             return sonuc
@@ -440,6 +450,7 @@ class _SonrakiModel(Exception):
 
 
 _gemini_iyi: str | None = None
+_gemini_kapali: dict[str, float] = {}  # model -> bu zamana kadar deneme
 
 
 def google_istemci(**kw) -> httpx.AsyncClient:

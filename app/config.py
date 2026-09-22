@@ -59,7 +59,7 @@ GEMINI_MODELS = [
     m.strip() for m in (
         os.environ.get("GEMINI_MODEL", "") + "," + os.environ.get(
             "GEMINI_MODELS",
-            "gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash,"
+            "gemini-3.6-flash,gemini-3.5-flash,"
             "gemini-3.5-flash-lite,gemini-3.1-flash-lite",
         )
     ).split(",") if m.strip()

@@ -710,7 +710,7 @@ async def _process_document_long(
                 p_tr = transcribe.to_timestamped_text(p_segs)
                 p_sec = await _asama(
                     work, f"part{i + 1}.bolumler.{prov}",
-                    lambda: segment.split_into_sections(p_segs, ad or p_title, p_tr),
+                    lambda: segment.split_into_sections(p_segs, ad or p_title, p_tr, belge=True),
                 )
                 p_dig = await _asama(
                     work, ozet_kaydi,
@@ -843,7 +843,7 @@ async def _process_document(job_id: str, pdf: Path, work: Path) -> None:
     db.update(job_id, stage="segment")
     sections = await _asama(
         work, f"bolumler.{prov}",
-        lambda: segment.split_into_sections(segments, title, transcript),
+        lambda: segment.split_into_sections(segments, title, transcript, belge=True),
     )
 
     db.update(job_id, stage="summarize")
@@ -942,7 +942,7 @@ async def _process_text(job_id: str, path: Path, work: Path) -> None:
     transcript_path.write_text(transcript, encoding="utf-8")
 
     db.update(job_id, stage="segment")
-    sections = await segment.split_into_sections(segments, title, transcript)
+    sections = await segment.split_into_sections(segments, title, transcript, belge=True)
 
     db.update(job_id, stage="summarize")
     digest = await summarize.summarize(sections, transcript, [])

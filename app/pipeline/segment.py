@@ -117,14 +117,14 @@ def _split_oversized(section: Section) -> list[Section]:
     return parts
 
 
-def _windows(segments: list[Segment]) -> list[list[Segment]]:
+def _windows(segments: list[Segment], iskelet: bool = False) -> list[list[Segment]]:
     limit = windows()["boundary"]
     out: list[list[Segment]] = []
     current: list[Segment] = []
     size = 0
     for seg in segments:
         current.append(seg)
-        size += len(seg.text) + 12
+        size += (len(_iskelet(seg.text)) if iskelet else len(seg.text)) + 12
         if size >= limit:
             out.append(current)
             current, size = [], 0
@@ -137,8 +137,40 @@ def _windows(segments: list[Segment]) -> list[list[Segment]]:
     return out
 
 
-async def _boundaries(window: list[Segment], title: str) -> list[tuple[str, float]]:
-    text = "\n".join(f"[{fmt_ts(s.start)}] {s.text}" for s in window)
+# Belgede (PDF/metin) bir segment = bir sayfa/kesit ve sınır zaten sayfa başında
+# olabilir: modelin tam metni okumasına gerek yok, her sayfanın AÇILIŞI + içindeki
+# başlık satırları yeter. Ölçüldü: bölümleme 150 sayfada 85k token okuyup 5k
+# token (yalnız sınır listesi) üretiyordu — kitap maliyetinin ~üçte biri.
+_ISKELET_ACILIS = 400
+_BASLIK_SATIRI = re.compile(
+    r"^(#{1,4}\s+\S|(\d+(\.\d+){0,3}|[IVXLC]+)[.)]?\s+[A-ZÇĞİÖŞÜ]|"
+    r"(chapter|bölüm|part|kısım|section)\b)",
+    re.I,
+)
+
+
+def _iskelet(metin: str) -> str:
+    """Sayfanın açılışı + sayfa ortasındaki başlık satırları (en çok 6)."""
+    acilis = metin[:_ISKELET_ACILIS]
+    basliklar = []
+    for satir in metin[_ISKELET_ACILIS:].splitlines():
+        s = satir.strip()
+        if 3 <= len(s) <= 90 and not s.endswith((".", ",", ";")) and (
+            _BASLIK_SATIRI.match(s) or (s.isupper() and len(s.split()) <= 12)
+        ):
+            basliklar.append(s)
+            if len(basliklar) >= 6:
+                break
+    return acilis + (f" … [sayfa içi başlıklar: {' / '.join(basliklar)}]" if basliklar else " …")
+
+
+async def _boundaries(
+    window: list[Segment], title: str, belge: bool = False
+) -> list[tuple[str, float]]:
+    if belge:
+        text = "\n".join(f"[{fmt_ts(s.start)}] {_iskelet(s.text)}" for s in window)
+    else:
+        text = "\n".join(f"[{fmt_ts(s.start)}] {s.text}" for s in window)
     result = await complete_json(
         system=_SYSTEM,
         user=f"Video başlığı: {title}\n\nTranskript parçası:\n\n{text}",
@@ -155,31 +187,40 @@ async def _boundaries(window: list[Segment], title: str) -> list[tuple[str, floa
     return marks
 
 
-def _thin(marks: list[tuple[str, float]]) -> list[tuple[str, float]]:
+def _thin(marks: list[tuple[str, float]], en_az: float = MIN_SECTION_SECONDS) -> list[tuple[str, float]]:
     """Birbirine çok yakın sınırları ele — pencere pencere aranınca aynı konu
     birden çok kez bölünebiliyor."""
     kept: list[tuple[str, float]] = []
     for mark in marks:
-        if kept and mark[1] - kept[-1][1] < MIN_SECTION_SECONDS:
+        if kept and mark[1] - kept[-1][1] < en_az:
             continue
         kept.append(mark)
     return kept
 
 
+# Belgede birim sayfadır ("zaman" = sayfa no): 45 "saniye" eşiği 45 SAYFA demekti
+# ve 35 sayfalık bir kitap bölümünde modelin bulduğu tüm konu sınırları atılıyor,
+# bölüm yalnız boyuta göre "(1. kısım)" diye dilimleniyordu. Belgede eşik 3 birim.
+BELGE_EN_AZ_BIRIM = 3
+
+
 async def split_into_sections(
-    segments: list[Segment], title: str, transcript: str
+    segments: list[Segment], title: str, transcript: str, belge: bool = False
 ) -> list[Section]:
+    """belge=True: PDF/metin — sınır bulma sayfa iskeletiyle (ucuz) ve sayfa
+    ölçeğinde inceltme. Video (varsayılan) değişmedi."""
     end_of_video = segments[-1].end
 
     # Pencere pencere gidiyoruz: tüm transkripti tek çağrıda göndermek Groq
-    # ücretsiz katmanında kotayı aşıp kalıcı 413 veriyor.
-    windows = _windows(segments)
+    # ücretsiz katmanında kotayı aşıp kalıcı 413 veriyor. Belgede pencere iskelet
+    # boyutuna göre ölçülür (iskelet ~5 kat küçük → çok daha az çağrı).
+    windows = _windows(segments, iskelet=belge)
     sem = asyncio.Semaphore(BOUNDARY_CONCURRENCY)
 
     async def one(window: list[Segment]) -> list[tuple[str, float]]:
         async with sem:
             try:
-                return await _boundaries(window, title)
+                return await _boundaries(window, title, belge)
             except Exception as exc:
                 print(f"[segment] pencere atlandi: {exc}", flush=True)
                 return []
@@ -187,7 +228,7 @@ async def split_into_sections(
     found = await asyncio.gather(*(one(w) for w in windows))
     marks = [m for window_marks in found for m in window_marks if m[1] < end_of_video]
     marks.sort(key=lambda m: m[1])
-    marks = _thin(marks)
+    marks = _thin(marks, BELGE_EN_AZ_BIRIM if belge else MIN_SECTION_SECONDS)
 
     if not marks:
         marks = [(title, 0.0)]
