@@ -286,14 +286,19 @@ PART_CONCURRENCY = _int("PART_CONCURRENCY", 3)
 # uzun sürer ve tek-işçi kuyruğunu bloklar. Varsayılan 600'e çıkarıldı (200+ sayfa
 # belgeler için); daha büyükleri düzenli işleyeceksen env'den (MAX_PDF_PAGES)
 # artır. Uzun PDF zaten PART_PAGES'a göre parçalanıp paralel özetlenir.
-MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 600)
+# Kitaplar 600 sayfayı aşabiliyor (ölçüldü: kullanıcı kütüphanesinde 8 kitap 600+,
+# en uzunu 1272). Metin katmanlı sayfa hızlı (690 sayfa 64 sn); sınır yalnız
+# taranmış dev PDF'in saatlerce OCR'ına karşı sigorta.
+MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 1500)
 # Tarayıcıdan doğrudan Blob'a yüklemede tek dosya üst sınırı (Vercel modu).
 # İzin bu boyuta kilitlenir; aşan yükleme Blob tarafından reddedilir.
 MAX_YUKLEME_MB = _int("MAX_YUKLEME_MB", 2048)
 # Uzun PDF de (uzun video gibi) parçalara bölünür: sayfa sayısı ~PART_PAGES'ı
 # belirgin aşarsa her parça AYRI özetlenir (part sayısı = round(sayfa/PART_PAGES)).
 # Tek dev özet 200 sayfada max_tokens'ı taşırıyor + gezilmesi zor.
-PART_PAGES = _int("PART_PAGES", 15)
+# Bundan uzun belge (sayfa ya da ~2500 karakterlik kesit) BÖLÜM BÖLÜM özetlenir
+# (bkz. document.bolum_araliklari); kısası (makale, slayt destesi) tek özet.
+UZUN_BELGE_BIRIM = _int("UZUN_BELGE_BIRIM", 50)
 
 CHUNK_SECONDS = _int("CHUNK_SECONDS", 600)
 TRANSCRIBE_CONCURRENCY = _int("TRANSCRIBE_CONCURRENCY", 3)

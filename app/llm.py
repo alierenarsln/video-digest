@@ -328,6 +328,12 @@ async def _uyumlu_json(
         },
         "max_tokens": min(max_tokens, cikti),
     }
+    if ad == "cerebras":
+        # qwen düşünen model; ayarsız bırakılınca bazı bölümlerde düşünmeyi hiç
+        # bitirmiyordu: 32k token'da bile "kesildi", kitabın 4 parçasından 2'si düştü
+        # ve iş 574 sn sürdü (ölçüldü). "low" düşünmeyi ~yarıya indiriyor; kesilirse
+        # bütçe büyütülmez, düşünme tamamen kapatılır (ölçüldü: 0 düşünme, stop).
+        payload["reasoning_effort"] = "low"
     last = ""
     async with httpx.AsyncClient(timeout=300) as client:
         for attempt in range(6):
@@ -350,8 +356,15 @@ async def _uyumlu_json(
                 raise LLMError(f"{ad} {resp.status_code}: {resp.text[:400]}")
             choice = resp.json()["choices"][0]
             if choice.get("finish_reason") == "length":
-                payload["max_tokens"] = min(int(payload["max_tokens"] * 1.6), 32000)
-                last = f"kesildi, max_tokens={payload['max_tokens']}"
+                if payload.get("reasoning_effort") == "low":
+                    payload["reasoning_effort"] = "none"
+                    last = "kesildi (düşünme) -> düşünmesiz yeniden"
+                elif payload["max_tokens"] < 16000:
+                    payload["max_tokens"] = min(int(payload["max_tokens"] * 1.6), 16000)
+                    last = f"kesildi, max_tokens={payload['max_tokens']}"
+                else:
+                    last = "kesildi"
+                    break
                 continue
             content = (choice["message"].get("content") or "").strip()
             if content:
@@ -529,7 +542,15 @@ async def complete_json(
             print("[llm] OpenRouter 402 (bakiye) -> bu cagri Gemini'ye", flush=True)
             return await _gemini_json(system, user, schema, effort, max_tokens)
     if aktif in ("cerebras", "mistral"):
-        return await _uyumlu_json(aktif, system, user, schema, max_tokens)
+        try:
+            return await _uyumlu_json(aktif, system, user, schema, max_tokens)
+        except LLMError as exc:
+            # Tek bir inatçı çağrı (kesilme/bozuk JSON/kota) bütün bölümü düşürmesin:
+            # Gemini varsa o çağrıyı ona devret (pencereler Gemini'ye de sığar).
+            if not GEMINI_API_KEY:
+                raise
+            print(f"[llm] {aktif} olmadi ({str(exc)[:80]}) -> bu cagri Gemini'ye", flush=True)
+            return await _gemini_json(system, user, schema, effort, max_tokens)
     if aktif == "gemini":
         if not GEMINI_API_KEY:
             raise LLMError("Sağlayıcı gemini seçildi ama GEMINI_API_KEY boş.")

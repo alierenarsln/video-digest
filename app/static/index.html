@@ -785,7 +785,7 @@ function isHtml(j) {
   // Uzun videonun "Tüm hali" ve parçaları aynı başlıkla başlıyor; ad kesilince üçü
   // aynı görünüyordu. Parça ekini ("Part 1 (0-35dk)" / "Tüm hali") alt satıra al.
   let ad = gorunenAd(j), parca = "";
-  const m = ad.match(/^(.*) — (Part \d+ \([^)]*\)|Tüm hali)$/);
+  const m = ad.match(/^(.*) — (Part \d+.*|Tüm hali)$/);
   if (m) { ad = m[1]; parca = m[2]; }
   return `<button class="is ${j.id === secili ? "secili" : ""}" data-id="${j.id}" type="button">
     <div class="ad">${esc(ad)}</div>
@@ -863,14 +863,15 @@ function asamaHtml(job) {
 function defterHtml(j) {
   const m = j.meta || {};
   const belge = m.kind === "document";
-  const isMd = m.kind === "markdown";  // md() renderer'ı gölgelememek için "isMd"
+  // Markdown/TXT: sayfa/OCR/karantina yok — metin zaten okunabilir.
+  const isMd = m.kind === "markdown";  // md() ile karışmasın diye "isMd"
   const karSay = (m.quarantined || []).length;  // hep-görünür şerit için sayı
   const olcum = isMd ? [
-    // Markdown/metin: sayfa/OCR/karantina yok — metin zaten okunabilir.
-    m.blocks ? [`${m.blocks}`, "bölüm"] : null,
-    m.words ? [`${m.words}`, "kelime"] : null,
+    m.parts ? [`${m.parts}`, "bölüm"] : null,
+    m.words ? [`${Math.round(m.words / 1000)}k`, "kelime"] : null,
     m.critic_added ? [`+${m.critic_added}`, "geri eklendi"] : null,
   ].filter(Boolean) : belge ? [
+    m.parts ? [`${m.parts}`, "bölüm"] : null,
     // PDF: ölçü birimi sayfa; "kaç okundu, kaçı metin-katmanı, kaçı OCR".
     m.pages ? [`${m.pages}`, "sayfa"] : null,
     m.pages_read != null ? [`${m.pages_read}`, "okundu"] : null,
@@ -1744,7 +1745,7 @@ $("#dosyaKaldir").onclick = () => sifirlaDosya();
 // Dosya/URL türünü algıla → uygun seçenekleri OTOMATİK öner + tür değişince güncelle.
 // Belge → video-only bloklar (içerik/transkript) gizli + özet Groq. Coderspace/CDN
 // → Yerel transkript + referer. Öneriler tür DEĞİŞİNCE uygulanır (elle seçimi ezmez).
-const BELGE_UZANTI = /\.(pdf|txt|md|markdown|epub)$/i;
+const BELGE_UZANTI = /\.(pdf|txt|md|markdown)$/i;
 const SES_UZANTI = /\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i;
 let _sonOneriTip = "__ilk__";
 
